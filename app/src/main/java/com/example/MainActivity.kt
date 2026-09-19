@@ -33,7 +33,6 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.media.AudioCacheManager
-import com.example.media.AudioProbeResult
 import com.example.media.BackgroundPlayService
 import com.example.media.DirectVideoView
 import com.example.media.MediaContextMenuHelper
@@ -184,8 +183,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnVideoQueue: Button
 
     private var videoProgressJob: Job? = null
-    private var currentVideoPlayer: MediaPlayer? = null
-    private var currentVideoProbeResult: AudioProbeResult? = null
     private var currentVideoIndex = -1
     private var isVideoTracking = false
     private var currentPlaybackSpeed: Float = 1.0f
@@ -764,13 +761,7 @@ class MainActivity : AppCompatActivity() {
         tvVideoHudSpeed.text = label
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                currentVideoPlayer?.let { mp ->
-                    val params = mp.playbackParams
-                    params.speed = speed
-                    mp.playbackParams = params
-                }
-            }
+            videoView.setPlaybackSpeed(speed)
         } catch (e: Exception) {
             Log.w(PtpConstants.TAG, "Could not set playback speed: $speed", e)
         }
@@ -925,31 +916,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSubtitlesDialog() {
-        val mp = currentVideoPlayer
-        if (mp == null) {
-            Toast.makeText(this, "Subtitles not available", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         try {
-            val trackInfo = mp.trackInfo
-            val subtitleTracks = mutableListOf<Pair<Int, String>>()
-            subtitleTracks.add(Pair(-1, getString(R.string.subtitles_off)))
-
-            var subCounter = 1
-            for (i in trackInfo.indices) {
-                if (trackInfo[i].trackType == MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_TIMEDTEXT ||
-                    trackInfo[i].trackType == MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_SUBTITLE
-                ) {
-                    val lang = trackInfo[i].language.ifBlank { "Track $subCounter" }
-                    subtitleTracks.add(Pair(i, lang))
-                    subCounter++
-                }
+            val tracks = videoView.getSubtitleTracks()
+            if (tracks.isEmpty()) {
+                Toast.makeText(this, "No subtitle tracks available for this video", Toast.LENGTH_SHORT).show()
+                return
             }
 
-            if (subtitleTracks.size == 1) {
-                Toast.makeText(this, "No subtitle tracks embedded in this video", Toast.LENGTH_SHORT).show()
-                return
+            val subtitleTracks = mutableListOf<Pair<Int, String>>()
+            subtitleTracks.add(Pair(-1, getString(R.string.subtitles_off)))
+            tracks.forEachIndexed { i, t ->
+                subtitleTracks.add(Pair(i, t.title))
             }
 
             val names = subtitleTracks.map { it.second }.toTypedArray()
@@ -962,13 +939,12 @@ class MainActivity : AppCompatActivity() {
                     currentSubtitlesTrack = chosen
                     try {
                         if (chosen == -1) {
-                            for (p in subtitleTracks) {
-                                if (p.first != -1) mp.deselectTrack(p.first)
-                            }
+                            videoView.disableSubtitles()
                             btnVideoSubs.text = "💬 SUBS"
                         } else {
-                            mp.selectTrack(chosen)
-                            btnVideoSubs.text = "💬 SUBS: ${subtitleTracks[which].second}"
+                            val track = tracks[chosen]
+                            videoView.selectSubtitleTrack(track.groupIndex, track.trackIndex)
+                            btnVideoSubs.text = "💬 SUBS: ${track.title}"
                         }
                     } catch (e: Exception) {
                         Log.w(PtpConstants.TAG, "Subtitle track selection failed", e)
@@ -985,65 +961,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAudioTrackDialog() {
-        val mp = currentVideoPlayer
-        val probe = currentVideoProbeResult
-        val currentItem = if (currentVideoIndex in displayedVideoList.indices) displayedVideoList[currentVideoIndex] else null
-
-        if (mp == null && probe == null) {
-            Toast.makeText(this, "Audio tracks not available", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         try {
-            val trackOptions = mutableListOf<Triple<Int, String, Boolean>>() // index, label, isAc3
-
-            if (probe != null && probe.audioTracks.isNotEmpty()) {
-                probe.audioTracks.forEach { track ->
-                    val label = if (track.isAc3) {
-                        "${track.language ?: "Track ${track.index + 1}"} [AC3 ${track.channels}ch • FFmpeg SW]"
-                    } else {
-                        "${track.language ?: "Track ${track.index + 1}"} (${track.codec.uppercase()} ${track.channels}ch)"
-                    }
-                    trackOptions.add(Triple(track.index, label, track.isAc3))
-                }
-            } else if (mp != null) {
-                val trackInfo = mp.trackInfo
-                var audioCounter = 1
-                for (i in trackInfo.indices) {
-                    if (trackInfo[i].trackType == MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_AUDIO) {
-                        val lang = trackInfo[i].language.ifBlank { "Track $audioCounter" }
-                        trackOptions.add(Triple(i, lang, false))
-                        audioCounter++
-                    }
-                }
-            }
-
-            val canTriggerSwDecode = currentItem != null && !videoView.isAc3SoftwareDecoderActive
-            val displayList = trackOptions.map { it.second }.toMutableList()
-            if (canTriggerSwDecode) {
-                displayList.add("⚡ Force FFmpegKit AC3 Software Decoder")
-            }
-
-            if (displayList.isEmpty()) {
-                Toast.makeText(this, "Single audio stream available", Toast.LENGTH_SHORT).show()
+            val audioTracks = videoView.getAudioTracks()
+            if (audioTracks.isEmpty()) {
+                Toast.makeText(this, "Audio tracks not available", Toast.LENGTH_SHORT).show()
                 return
             }
 
+            if (audioTracks.size <= 1) {
+                Toast.makeText(this, "Single audio stream available: ${audioTracks.first().title}", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val names = audioTracks.map { it.title }.toTypedArray()
+            val selectedIdx = audioTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)
+
             AlertDialog.Builder(this)
                 .setTitle(getString(R.string.audio_track))
-                .setItems(displayList.toTypedArray()) { dialog, which ->
+                .setSingleChoiceItems(names, selectedIdx) { dialog, which ->
                     try {
-                        if (canTriggerSwDecode && which == displayList.size - 1 && currentItem != null) {
-                            triggerAc3SoftwareDecode(currentVideoSessionId, currentItem, 0)
-                        } else if (which < trackOptions.size) {
-                            val selected = trackOptions[which]
-                            if (selected.third && currentItem != null) {
-                                triggerAc3SoftwareDecode(currentVideoSessionId, currentItem, selected.first)
-                            } else {
-                                mp?.selectTrack(selected.first)
-                                btnVideoAudioTrack.text = "🔊 ${selected.second}"
-                            }
-                        }
+                        val track = audioTracks[which]
+                        videoView.selectAudioTrack(track.groupIndex, track.trackIndex)
+                        btnVideoAudioTrack.text = "🔊 ${track.title}"
                     } catch (e: Exception) {
                         Log.w(PtpConstants.TAG, "Audio track switch failed", e)
                     }
@@ -1364,18 +1303,12 @@ class MainActivity : AppCompatActivity() {
         videoProgressJob?.cancel()
         videoPlaybackManager.closeCurrentSession()
         try {
-            videoView.setOnPreparedListener(null)
-            videoView.setOnErrorListener(null)
-            videoView.setOnCompletionListener(null)
             videoView.stopPlayback()
         } catch (_: Exception) {}
-        currentVideoPlayer = null
 
         showScreen(Screen.VIDEO_PLAYER)
 
         // Reset UI state
-        currentVideoProbeResult = null
-        videoView.isAc3SoftwareDecoderActive = false
         tvVideoError.visibility = View.GONE
         tvVideoError.text = ""
         tvVideoTitle.text = item.displayName
@@ -1416,14 +1349,13 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        videoView.setOnPreparedListener { mp ->
+        videoView.setOnPreparedListener {
             if (sessionId != currentVideoSessionId) return@setOnPreparedListener
-            currentVideoPlayer = mp
             tvVideoError.visibility = View.GONE
             tvVideoError.text = ""
             layoutVideoBuffering.visibility = View.GONE
 
-            mp.isLooping = (videoLoopMode == LoopMode.SINGLE)
+            videoView.setLooping(videoLoopMode == LoopMode.SINGLE)
             setPlaybackSpeed(currentPlaybackSpeed)
             videoView.start()
             btnVideoPlayPause.text = "⏸ PAUSE"
@@ -1438,24 +1370,15 @@ class MainActivity : AppCompatActivity() {
             resetVideoHudTimer()
         }
 
-        videoView.setOnErrorListener { _, what, extra ->
-            if (sessionId != currentVideoSessionId) return@setOnErrorListener true
-            Log.w(PtpConstants.TAG, "DirectVideoView playback error: what=$what extra=$extra")
-
-            // Automatically fall back to FFmpegKit AC3 software decoding if not already active
-            if (!videoView.isAc3SoftwareDecoderActive) {
-                Log.i(PtpConstants.TAG, "Attempting FFmpegKit AC3 software decoding fallback for session $sessionId")
-                triggerAc3SoftwareDecode(sessionId, item)
-                return@setOnErrorListener true
-            }
-
+        videoView.setOnErrorListener { errorMsg ->
+            if (sessionId != currentVideoSessionId) return@setOnErrorListener
+            Log.w(PtpConstants.TAG, "DirectVideoView playback error: $errorMsg")
             layoutVideoBuffering.visibility = View.GONE
             tvVideoError.text = getString(R.string.video_codec_unsupported)
             tvVideoError.visibility = View.VISIBLE
             showVideoHud()
             btnVideoPlayPause.text = "▶ PLAY"
             updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
-            true
         }
 
         videoView.setOnCompletionListener {
@@ -1483,76 +1406,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             session.prewarmInitialChunk()
             if (sessionId == currentVideoSessionId) {
-                videoView.setDataSource(session.dataSource)
-
-                // Probe in background for AC3 audio tracks
-                lifecycleScope.launch(Dispatchers.IO) {
-                    try {
-                        val probe = videoPlaybackManager.ac3Decoder.probeMedia(session.cacheFile.absolutePath)
-                        if (sessionId == currentVideoSessionId) {
-                            currentVideoProbeResult = probe
-                            if (probe.hasAc3) {
-                                withContext(Dispatchers.Main) {
-                                    if (sessionId == currentVideoSessionId && !videoView.isAc3SoftwareDecoderActive) {
-                                        val ext = item.filename.substringAfterLast('.', "VIDEO").uppercase()
-                                        tvVideoBadgeFormat.text = "$ext • AC3"
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.w(PtpConstants.TAG, "FFprobe stream probe failed: ${e.message}")
-                    }
-                }
-            }
-        }
-    }
-
-    private fun triggerAc3SoftwareDecode(sessionId: Long, item: PtpMediaItem, audioTrackIndex: Int = 0) {
-        val session = videoPlaybackManager.getCurrentSession() ?: return
-        if (sessionId != currentVideoSessionId) return
-
-        lifecycleScope.launch {
-            layoutVideoBuffering.visibility = View.VISIBLE
-            tvBuffering.text = getString(R.string.decoding_ac3_audio)
-            showVideoHud()
-
-            val cachedFile = session.cacheFullFileForDecoding { downloaded, total ->
-                if (sessionId == currentVideoSessionId) {
-                    val dlMb = downloaded / (1024.0 * 1024.0)
-                    val totMb = total / (1024.0 * 1024.0)
-                    tvBuffering.text = String.format("Buffering for AC3 SW decode %.1f / %.1f MB...", dlMb, totMb)
-                }
-            }
-
-            if (cachedFile == null || sessionId != currentVideoSessionId) {
-                layoutVideoBuffering.visibility = View.GONE
-                tvVideoError.text = getString(R.string.ac3_decoding_failed)
-                tvVideoError.visibility = View.VISIBLE
-                btnVideoPlayPause.text = "▶ PLAY"
-                updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
-                return@launch
-            }
-
-            tvBuffering.text = getString(R.string.decoding_ac3_audio)
-            val decodeResult = videoPlaybackManager.ac3Decoder.decodeAc3StreamForPlayback(
-                inputPath = cachedFile.absolutePath,
-                sessionId = sessionId,
-                audioTrackIndex = audioTrackIndex
-            )
-
-            if (sessionId == currentVideoSessionId && decodeResult.success && decodeResult.outputFile != null) {
-                videoView.isAc3SoftwareDecoderActive = true
-                val ext = item.filename.substringAfterLast('.', "VIDEO").uppercase()
-                tvVideoBadgeFormat.text = "$ext • ${getString(R.string.ac3_software_decoder_active)}"
-                videoView.setDataSource(decodeResult.outputFile.absolutePath)
-            } else if (sessionId == currentVideoSessionId) {
-                layoutVideoBuffering.visibility = View.GONE
-                tvVideoError.text = getString(R.string.video_codec_unsupported)
-                tvVideoError.visibility = View.VISIBLE
-                showVideoHud()
-                btnVideoPlayPause.text = "▶ PLAY"
-                updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
+                videoView.setSession(session)
             }
         }
     }
@@ -1587,12 +1441,8 @@ class MainActivity : AppCompatActivity() {
         videoProgressJob?.cancel()
         videoPlaybackManager.closeCurrentSession()
         try {
-            videoView.setOnPreparedListener(null)
-            videoView.setOnErrorListener(null)
-            videoView.setOnCompletionListener(null)
             videoView.stopPlayback()
         } catch (_: Exception) {}
-        currentVideoPlayer = null
         layoutVideoBuffering.visibility = View.GONE
         tvVideoError.visibility = View.GONE
         tvVideoError.text = ""

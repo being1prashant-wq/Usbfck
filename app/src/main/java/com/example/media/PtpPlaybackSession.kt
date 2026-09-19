@@ -25,7 +25,7 @@ class PtpPlaybackSession(
     val sessionId: Long,
     val item: PtpMediaItem,
     val totalSizeBytes: Long,
-    private val client: PtpClient? = null,
+    private val client: PtpClient,
     private val cacheDir: File,
     private val scope: CoroutineScope,
     private val onBufferingUpdate: ((isBuffering: Boolean, bufferedBytes: Long, totalBytes: Long) -> Unit)? = null
@@ -40,7 +40,7 @@ class PtpPlaybackSession(
     var isClosed = false
         private set
 
-    val cacheFile = File(cacheDir, "ptp_video_session_${sessionId}_${item.handle}.cache")
+    private val cacheFile = File(cacheDir, "ptp_video_session_${sessionId}_${item.handle}.cache")
     private var raf: RandomAccessFile? = null
 
     // Track cached chunks: chunkIndex -> bytesWritten
@@ -78,13 +78,11 @@ class PtpPlaybackSession(
             }
             raf = RandomAccessFile(cacheFile, "rw")
 
-            if (client != null) {
-                if (!client.supportsPartialObject()) {
-                    Log.w(PtpConstants.TAG, "Device reports no partial object support; starting sequential stream fallback for session $sessionId")
-                    startSequentialFallbackStream()
-                } else {
-                    startPrefetchWorker()
-                }
+            if (!client.supportsPartialObject()) {
+                Log.w(PtpConstants.TAG, "Device reports no partial object support; starting sequential stream fallback for session $sessionId")
+                startSequentialFallbackStream()
+            } else {
+                startPrefetchWorker()
             }
         } catch (e: Exception) {
             Log.e(PtpConstants.TAG, "Failed to initialize PtpPlaybackSession $sessionId", e)
@@ -100,28 +98,6 @@ class PtpPlaybackSession(
             return waitForSequentialBytes(minOf(CHUNK_SIZE.toLong(), totalSizeBytes))
         }
         return fetchChunk(0L)
-    }
-
-    /**
-     * Download the full video file into disk cache so FFmpegKit can perform
-     * AC3 software decoding and remuxing.
-     */
-    suspend fun cacheFullFileForDecoding(onProgress: ((downloaded: Long, total: Long) -> Unit)? = null): File? {
-        if (isClosed) return null
-        if (isSequentialFallback) {
-            val ok = waitForSequentialBytes(totalSizeBytes)
-            return if (ok && cacheFile.exists() && cacheFile.length() > 0) cacheFile else null
-        }
-        val totalChunks = (totalSizeBytes + CHUNK_SIZE - 1) / CHUNK_SIZE
-        for (c in 0 until totalChunks) {
-            if (isClosed) return null
-            if (!cachedChunks.containsKey(c)) {
-                val fetched = fetchChunk(c)
-                if (!fetched && isClosed) return null
-            }
-            onProgress?.invoke(getBufferedBytes(), totalSizeBytes)
-        }
-        return if (cacheFile.exists() && cacheFile.length() > 0) cacheFile else null
     }
 
     /**
@@ -213,7 +189,6 @@ class PtpPlaybackSession(
         isDemandFetching = true
         try {
             var attempt = 0
-            val c = client ?: return false
             while (attempt < MAX_FETCH_ATTEMPTS && !isClosed) {
                 attempt++
                 val chunkOffset = chunkIndex * CHUNK_SIZE
@@ -222,7 +197,7 @@ class PtpPlaybackSession(
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), remaining).toInt()
 
                 val data = runBlocking(Dispatchers.IO) {
-                    c.getPartialObjectRange(
+                    client.getPartialObjectRange(
                         handle = item.handle,
                         offset = chunkOffset,
                         maxBytes = chunkSize,
@@ -264,7 +239,6 @@ class PtpPlaybackSession(
      * Background worker that continuously prefetches future chunks ahead of the current playback position.
      */
     private fun startPrefetchWorker() {
-        val c = client ?: return
         prefetchJob?.cancel()
         prefetchJob = scope.launch(Dispatchers.IO) {
             while (isActive && !isClosed && !isSequentialFallback) {
@@ -294,7 +268,7 @@ class PtpPlaybackSession(
                             val remaining = totalSizeBytes - chunkOffset
                             val chunkSize = minOf(CHUNK_SIZE.toLong(), remaining).toInt()
 
-                            val data = c.getPartialObjectRange(
+                            val data = client.getPartialObjectRange(
                                 handle = item.handle,
                                 offset = chunkOffset,
                                 maxBytes = chunkSize,
@@ -324,7 +298,6 @@ class PtpPlaybackSession(
     }
 
     private fun startSequentialFallbackStream() {
-        val c = client ?: return
         if (isSequentialFallback) return
         isSequentialFallback = true
         prefetchJob?.cancel()
@@ -352,7 +325,7 @@ class PtpPlaybackSession(
                         }
                     }
                 }
-                c.streamObject(item.handle, out, isCancelled = { isClosed })
+                client.streamObject(item.handle, out, isCancelled = { isClosed })
             } catch (e: Exception) {
                 Log.w(PtpConstants.TAG, "Sequential fallback stream ended for session $sessionId: ${e.message}")
             }

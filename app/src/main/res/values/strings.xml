@@ -49,7 +49,4 @@
     <string name="subtitles_off">Subtitles: Off</string>
     <string name="subtitles_track">Subtitle Track</string>
     <string name="audio_track">Audio Track</string>
-    <string name="decoding_ac3_audio">Decoding AC3 audio with FFmpeg software decoder...</string>
-    <string name="ac3_software_decoder_active">AC3 [FFmpeg SW]</string>
-    <string name="ac3_decoding_failed">FFmpeg AC3 software decoding failed.</string>
 </resources>

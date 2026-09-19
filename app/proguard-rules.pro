@@ -1,7 +1,4 @@
 # Add project specific ProGuard rules here.
--keep class com.arthenica.ffmpegkit.** { *; }
--dontwarn com.arthenica.ffmpegkit.**
-
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 #

@@ -52,10 +52,10 @@ data class PtpObjectInfo(
         get() = !isFolder && PtpConstants.isAudio(format, filename)
 }
 
-class PtpClient(
-    private val connection: UsbDeviceConnection?,
-    private val bulkIn: UsbEndpoint,
-    private val bulkOut: UsbEndpoint
+open class PtpClient(
+    private val connection: UsbDeviceConnection? = null,
+    private val bulkIn: UsbEndpoint? = null,
+    private val bulkOut: UsbEndpoint? = null
 ) {
     private val transactionCounter = AtomicInteger(1)
     private val mutex = Mutex()
@@ -75,7 +75,8 @@ class PtpClient(
         return id
     }
 
-    private fun safeBulkTransfer(endpoint: UsbEndpoint, buffer: ByteArray, length: Int, timeout: Int): Int {
+    private fun safeBulkTransfer(endpoint: UsbEndpoint?, buffer: ByteArray, length: Int, timeout: Int): Int {
+        if (endpoint == null) return -1
         return try {
             val conn = connection ?: return -1
             conn.bulkTransfer(endpoint, buffer, length, timeout)
@@ -679,7 +680,7 @@ class PtpClient(
     /**
      * Checks if the connected PTP/MTP device supports partial object operations.
      */
-    fun supportsPartialObject(): Boolean {
+    open fun supportsPartialObject(): Boolean {
         val ops = deviceInfo?.operationsSupported ?: return true
         return ops.contains(PtpConstants.OPERATION_GET_PARTIAL_OBJECT) ||
                ops.contains(PtpConstants.OPERATION_GET_PARTIAL_OBJECT_64)
@@ -688,7 +689,7 @@ class PtpClient(
     /**
      * Get Partial Object data for a range with 64-bit offset and cancellation support.
      */
-    suspend fun getPartialObjectRange(
+    open suspend fun getPartialObjectRange(
         handle: Int,
         offset: Long,
         maxBytes: Int,

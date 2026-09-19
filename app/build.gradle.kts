@@ -79,7 +79,10 @@ dependencies {
   implementation(libs.androidx.appcompat)
   implementation(libs.androidx.recyclerview)
   implementation(libs.androidx.media)
-  implementation(libs.ffmpeg.kit)
+  implementation(libs.media3.exoplayer)
+  implementation(libs.media3.ui)
+  implementation(libs.media3.session)
+  implementation(libs.media3.datasource)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
 
