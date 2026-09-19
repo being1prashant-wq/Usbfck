@@ -28,6 +28,8 @@ class DirectVideoView @JvmOverloads constructor(
     private var videoWidth = 0
     private var videoHeight = 0
 
+    var isAc3SoftwareDecoderActive: Boolean = false
+
     private var onPreparedListener: MediaPlayer.OnPreparedListener? = null
     private var onErrorListener: MediaPlayer.OnErrorListener? = null
     private var onCompletionListener: MediaPlayer.OnCompletionListener? = null
@@ -57,9 +59,8 @@ class DirectVideoView @JvmOverloads constructor(
         } catch (_: Exception) {}
     }
 
-    fun setDataSource(dataSource: MediaDataSource) {
+    private fun preparePlayer(setupSource: (MediaPlayer) -> Unit) {
         stopPlayback()
-        this.currentDataSource = dataSource
 
         try {
             val mp = MediaPlayer()
@@ -106,11 +107,36 @@ class DirectVideoView @JvmOverloads constructor(
                 onInfoListener?.onInfo(player, what, extra) ?: false
             }
 
-            mp.setDataSource(dataSource)
+            setupSource(mp)
             mp.prepareAsync()
         } catch (e: Exception) {
-            Log.e("DirectVideoView", "Failed to setDataSource", e)
+            Log.e("DirectVideoView", "Failed to setup MediaPlayer", e)
             onErrorListener?.onError(mediaPlayer, MediaPlayer.MEDIA_ERROR_UNKNOWN, -1)
+        }
+    }
+
+    fun setDataSource(dataSource: MediaDataSource) {
+        preparePlayer { mp ->
+            this.currentDataSource = dataSource
+            mp.setDataSource(dataSource)
+        }
+    }
+
+    fun setDataSource(path: String) {
+        preparePlayer { mp ->
+            mp.setDataSource(path)
+        }
+    }
+
+    fun setDataSource(fd: java.io.FileDescriptor) {
+        preparePlayer { mp ->
+            mp.setDataSource(fd)
+        }
+    }
+
+    fun setDataSource(fd: java.io.FileDescriptor, offset: Long, length: Long) {
+        preparePlayer { mp ->
+            mp.setDataSource(fd, offset, length)
         }
     }
 
@@ -204,6 +230,7 @@ class DirectVideoView @JvmOverloads constructor(
         }
         mediaPlayer = null
         isPrepared = false
+        isAc3SoftwareDecoderActive = false
         videoWidth = 0
         videoHeight = 0
 

@@ -45,9 +45,11 @@ credentials = "1.5.0"
 googleid = "1.1.1"
 media = "1.7.0"
 media3 = "1.5.1"
+ffmpegKit = "6.0"
 
 
 [libraries]
+ffmpeg-kit = { group = "com.mrljdx", name = "ffmpeg-kit-full", version.ref = "ffmpegKit" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }

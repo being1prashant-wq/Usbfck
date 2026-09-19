@@ -13,6 +13,8 @@ class VideoPlaybackManager(
     private val context: Context,
     private val scope: CoroutineScope
 ) {
+    val ac3Decoder = Ac3SoftwareDecoder(context)
+
     @Volatile
     private var currentSession: PtpPlaybackSession? = null
 
@@ -24,7 +26,7 @@ class VideoPlaybackManager(
      * Automatically invalidates and cleans up any existing active session.
      */
     fun createSession(
-        client: PtpClient,
+        client: PtpClient?,
         item: PtpMediaItem,
         sessionId: Long,
         onBufferingUpdate: ((isBuffering: Boolean, bufferedBytes: Long, totalBytes: Long) -> Unit)? = null
@@ -59,9 +61,15 @@ class VideoPlaybackManager(
      */
     fun closeCurrentSession() {
         activeSessionId = -1L
+        try {
+            ac3Decoder.cancelActiveDecode()
+        } catch (_: Throwable) {}
         currentSession?.close()
         currentSession = null
         cleanupStaleCacheFiles()
+        try {
+            ac3Decoder.cleanupTempFiles()
+        } catch (_: Throwable) {}
     }
 
     private fun cleanupStaleCacheFiles() {
