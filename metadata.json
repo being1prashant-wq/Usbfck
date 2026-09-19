@@ -1,0 +1,8 @@
+{
+  "name": "Remix DirectUSB",
+  "description": "Access phone media directly on your Android TV via USB using native MTP/PTP protocols without external requirements.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

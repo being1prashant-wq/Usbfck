@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+    <color name="text_secondary">#AAAAAA</color>
+    <color name="text_muted">#777777</color>
+    <color name="surface_dark">#121212</color>
+    <color name="focus_highlight">#FFFFFF</color>
+    <color name="focus_bg">#2A2A2A</color>
+    <color name="border_subtle">#333333</color>
+    
+    <!-- Modern TV Player palette -->
+    <color name="tv_accent">#3B82F6</color>
+    <color name="tv_accent_glow">#60A5FA</color>
+    <color name="tv_control_bg">#D91C2028</color>
+    <color name="tv_control_focus_bg">#E62E3848</color>
+    <color name="tv_control_stroke">#334155</color>
+    <color name="tv_card_bg">#14171E</color>
+    <color name="tv_scrim_top">#B3000000</color>
+    <color name="tv_scrim_bottom">#E6080A0F</color>
+</resources>
