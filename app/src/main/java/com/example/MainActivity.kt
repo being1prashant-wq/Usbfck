@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaPlayer
-import android.media.PlaybackParams
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -20,7 +19,6 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.SeekBar
 import android.widget.TextView
@@ -35,13 +33,18 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.media.AudioCacheManager
 import com.example.media.BackgroundPlayService
 import com.example.media.DirectVideoView
-import com.example.media.PlaybackEngine
+import com.example.media.EqualizerView
 import com.example.media.MediaContextMenuHelper
 import com.example.media.MediaThumbnailLoader
 import com.example.media.PhotoThumbnailLoader
+import com.example.media.PlaybackEngine
 import com.example.media.PtpMediaItem
 import com.example.media.PtpMediaRepository
+import com.example.media.TvFocusAnimator
 import com.example.media.VideoPlaybackManager
+import com.example.theme.AppTheme
+import com.example.theme.ThemeManager
+import com.example.theme.ThemeSelectionDialog
 import com.example.usb.PtpClient
 import com.example.usb.PtpConstants
 import com.example.usb.UsbConnectionState
@@ -51,7 +54,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 enum class Screen {
     START,
@@ -122,6 +124,7 @@ class MainActivity : AppCompatActivity() {
 
     // Home Screen Views
     private lateinit var tvHomeDeviceName: TextView
+    private lateinit var btnHomeTheme: Button
     private lateinit var btnPhotos: Button
     private lateinit var btnVideos: Button
     private lateinit var btnAudio: Button
@@ -132,6 +135,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvEmptyPhotos: TextView
     private lateinit var btnPhotosSort: Button
     private lateinit var btnPhotosViewMode: Button
+    private lateinit var btnPhotosTheme: Button
     private lateinit var photoAdapter: PhotoAdapter
     private var photoViewMode = ViewMode.GRID
     private var photoSortMode = SortMode.DEFAULT
@@ -150,6 +154,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvEmptyVideos: TextView
     private lateinit var btnVideosSort: Button
     private lateinit var btnVideosViewMode: Button
+    private lateinit var btnVideosTheme: Button
     private lateinit var videoAdapter: VideoAdapter
     private var videoViewMode = ViewMode.GRID
     private var videoSortMode = SortMode.DEFAULT
@@ -182,9 +187,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnVideoLoop: Button
     private lateinit var btnVideoBgPlay: Button
     private lateinit var btnVideoQueue: Button
+    private lateinit var btnVideoTheme: Button
 
     private var videoProgressJob: Job? = null
-    private var currentVideoPlayer: MediaPlayer? = null
     private var currentVideoIndex = -1
     private var isVideoTracking = false
     private var currentPlaybackSpeed: Float = 1.0f
@@ -210,6 +215,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvEmptyAudio: TextView
     private lateinit var btnAudioSort: Button
     private lateinit var btnAudioViewMode: Button
+    private lateinit var btnAudioTheme: Button
     private lateinit var audioAdapter: AudioAdapter
     private var audioViewMode = ViewMode.GRID
     private var audioSortMode = SortMode.DEFAULT
@@ -219,6 +225,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ivAudioAmbientBg: ImageView
     private lateinit var ivAudioPlayerArt: ImageView
     private lateinit var tvAudioPlayerTitle: TextView
+    private lateinit var audioEqualizerView: EqualizerView
     private lateinit var tvAudioPlayerStatus: TextView
     private lateinit var tvAudioTimeCurrent: TextView
     private lateinit var tvAudioTimeTotal: TextView
@@ -237,6 +244,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnAudioLoop: Button
     private lateinit var btnAudioBgPlay: Button
     private lateinit var btnAudioQueue: Button
+    private lateinit var btnAudioPlayerTheme: Button
 
     private var audioPlayer: MediaPlayer? = null
     private var audioCachingJob: Job? = null
@@ -249,7 +257,6 @@ class MainActivity : AppCompatActivity() {
     private var videoLoopMode: LoopMode = LoopMode.OFF
     private var audioLoopMode: LoopMode = LoopMode.OFF
     private var isBackgroundPlayEnabled: Boolean = false
-    private var currentSubtitlesTrack: Int = -1
 
     private var currentScreen: Screen = Screen.START
 
@@ -257,10 +264,33 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        ThemeManager.init(this)
         initViews()
         initServices()
         initMediaSession()
+
+        ThemeManager.addListener { theme ->
+            applyAppTheme(theme)
+        }
+        applyAppTheme(ThemeManager.getTheme())
+
         showScreen(Screen.START)
+    }
+
+    private fun applyAppTheme(theme: AppTheme) {
+        ThemeManager.applyToSeekBar(sbVideoSeek, theme)
+        ThemeManager.applyToSeekBar(progressAudioSeek, theme)
+        ThemeManager.applyToPrimaryButton(btnVideoPlayPause, theme)
+        ThemeManager.applyToPrimaryButton(btnAudioPlayPause, theme)
+        ThemeManager.applyToBadge(tvVideoBadgeFormat, theme)
+        ThemeManager.applyToBadge(tvVideoHudSpeed, theme)
+        audioEqualizerView.setThemeColor(theme.accentColor)
+    }
+
+    private fun showThemePicker() {
+        ThemeSelectionDialog.show(this) { theme ->
+            applyAppTheme(theme)
+        }
     }
 
     private fun initViews() {
@@ -293,9 +323,12 @@ class MainActivity : AppCompatActivity() {
 
         tvStartStatus = findViewById(R.id.tv_start_status)
         tvHomeDeviceName = findViewById(R.id.tv_home_device_name)
+        btnHomeTheme = findViewById(R.id.btn_home_theme)
         btnPhotos = findViewById(R.id.btn_photos)
         btnVideos = findViewById(R.id.btn_videos)
         btnAudio = findViewById(R.id.btn_audio)
+
+        btnHomeTheme.setOnClickListener { showThemePicker() }
 
         // Home button actions
         btnPhotos.setOnClickListener {
@@ -317,6 +350,7 @@ class MainActivity : AppCompatActivity() {
         tvEmptyPhotos = findViewById(R.id.tv_empty_photos)
         btnPhotosSort = findViewById(R.id.btn_photos_sort)
         btnPhotosViewMode = findViewById(R.id.btn_photos_view_mode)
+        btnPhotosTheme = findViewById(R.id.btn_photos_theme)
         setupPhotosBrowserControls()
 
         // Photo Viewer
@@ -330,6 +364,7 @@ class MainActivity : AppCompatActivity() {
         tvEmptyVideos = findViewById(R.id.tv_empty_videos)
         btnVideosSort = findViewById(R.id.btn_videos_sort)
         btnVideosViewMode = findViewById(R.id.btn_videos_view_mode)
+        btnVideosTheme = findViewById(R.id.btn_videos_theme)
         setupVideosBrowserControls()
 
         // Video Player UI
@@ -358,6 +393,7 @@ class MainActivity : AppCompatActivity() {
         btnVideoLoop = findViewById(R.id.btn_video_loop)
         btnVideoBgPlay = findViewById(R.id.btn_video_bg_play)
         btnVideoQueue = findViewById(R.id.btn_video_queue)
+        btnVideoTheme = findViewById(R.id.btn_video_theme)
 
         setupVideoControls()
 
@@ -367,12 +403,14 @@ class MainActivity : AppCompatActivity() {
         tvEmptyAudio = findViewById(R.id.tv_empty_audio)
         btnAudioSort = findViewById(R.id.btn_audio_sort)
         btnAudioViewMode = findViewById(R.id.btn_audio_view_mode)
+        btnAudioTheme = findViewById(R.id.btn_audio_theme)
         setupAudioBrowserControls()
 
         // Audio Player
         ivAudioAmbientBg = findViewById(R.id.iv_audio_ambient_bg)
         ivAudioPlayerArt = findViewById(R.id.iv_audio_player_art)
         tvAudioPlayerTitle = findViewById(R.id.tv_audio_player_title)
+        audioEqualizerView = findViewById(R.id.audio_equalizer_view)
         tvAudioPlayerStatus = findViewById(R.id.tv_audio_player_status)
         tvAudioTimeCurrent = findViewById(R.id.tv_audio_time_current)
         tvAudioTimeTotal = findViewById(R.id.tv_audio_time_total)
@@ -390,8 +428,25 @@ class MainActivity : AppCompatActivity() {
         btnAudioLoop = findViewById(R.id.btn_audio_loop)
         btnAudioBgPlay = findViewById(R.id.btn_audio_bg_play)
         btnAudioQueue = findViewById(R.id.btn_audio_queue)
+        btnAudioPlayerTheme = findViewById(R.id.btn_audio_player_theme)
 
         setupAudioControls()
+
+        // Attach TV Focus Animation to all interactive views
+        val interactiveViews = listOf(
+            btnPhotos, btnVideos, btnAudio, btnHomeTheme,
+            btnPhotosSort, btnPhotosViewMode, btnPhotosTheme,
+            btnVideosSort, btnVideosViewMode, btnVideosTheme,
+            btnAudioSort, btnAudioViewMode, btnAudioTheme,
+            btnVideoPrev, btnVideoRewind10, btnVideoPlayPause, btnVideoForward10, btnVideoNext,
+            btnVideoSubs, btnVideoAudioTrack, btnVideoSpeed, btnVideoLoop, btnVideoBgPlay, btnVideoQueue, btnVideoTheme,
+            btnAudioPrev, btnAudioRewind10, btnAudioPlayPause, btnAudioForward10, btnAudioNext,
+            btnAudioLoop, btnAudioBgPlay, btnAudioQueue, btnAudioPlayerTheme,
+            btnCloseQueue, btnCancelCopy
+        )
+        for (v in interactiveViews) {
+            TvFocusAnimator.attach(v)
+        }
     }
 
     private fun initServices() {
@@ -459,17 +514,11 @@ class MainActivity : AppCompatActivity() {
             thumbnailLoader = mediaThumbnailLoader,
             isListView = { videoViewMode == ViewMode.LIST },
             onItemBound = { item ->
-                lifecycleScope.launch {
-                    val updated = repository.fetchMetadataIfNeeded(item)
-                    if (updated.isMetadataLoaded) {
-                        val idx = displayedVideoList.indexOf(item)
-                        if (idx >= 0) videoAdapter.notifyItemChanged(idx)
-                    }
-                }
+                loadMediaMetadata(item)
             },
             onItemClicked = { item ->
                 val idx = displayedVideoList.indexOf(item)
-                if (idx >= 0) {
+                if (idx != -1) {
                     playVideoAtIndex(idx)
                 }
             },
@@ -484,17 +533,11 @@ class MainActivity : AppCompatActivity() {
             thumbnailLoader = mediaThumbnailLoader,
             isListView = { audioViewMode == ViewMode.LIST },
             onItemBound = { item ->
-                lifecycleScope.launch {
-                    val updated = repository.fetchMetadataIfNeeded(item)
-                    if (updated.isMetadataLoaded) {
-                        val idx = displayedAudioList.indexOf(item)
-                        if (idx >= 0) audioAdapter.notifyItemChanged(idx)
-                    }
-                }
+                loadMediaMetadata(item)
             },
             onItemClicked = { item ->
                 val idx = displayedAudioList.indexOf(item)
-                if (idx >= 0) {
+                if (idx != -1) {
                     playAudioAtIndex(idx)
                 }
             },
@@ -507,12 +550,12 @@ class MainActivity : AppCompatActivity() {
         queueAdapter = QueueAdapter(
             items = emptyList(),
             currentIndex = -1,
-            onItemClicked = { index ->
+            onItemClicked = { clickedIndex ->
                 overlayQueue.visibility = View.GONE
                 if (currentScreen == Screen.VIDEO_PLAYER) {
-                    playVideoAtIndex(index)
+                    playVideoAtIndex(clickedIndex)
                 } else if (currentScreen == Screen.AUDIO_PLAYER) {
-                    playAudioAtIndex(index)
+                    playAudioAtIndex(clickedIndex)
                 }
             }
         )
@@ -528,7 +571,10 @@ class MainActivity : AppCompatActivity() {
         btnPhotosViewMode.setOnClickListener {
             val isNowList = (photoViewMode == ViewMode.GRID)
             photoViewMode = if (isNowList) ViewMode.LIST else ViewMode.GRID
-            btnPhotosViewMode.text = if (isNowList) "☰ LIST" else "▦ GRID"
+            btnPhotosViewMode.text = if (isNowList) "LIST" else "GRID"
+            btnPhotosViewMode.setCompoundDrawablesWithIntrinsicBounds(
+                if (isNowList) R.drawable.ic_view_list else R.drawable.ic_view_grid, 0, 0, 0
+            )
             rvPhotos.recycledViewPool.clear()
             rvPhotos.layoutManager = if (isNowList) LinearLayoutManager(this) else GridLayoutManager(this, 4)
             photoAdapter.notifyDataSetChanged()
@@ -536,10 +582,11 @@ class MainActivity : AppCompatActivity() {
         btnPhotosSort.setOnClickListener {
             showSortDialog("Photos", photoSortMode) { selected ->
                 photoSortMode = selected
-                btnPhotosSort.text = "⫽ ${selected.name.replace('_', ' ')}"
+                btnPhotosSort.text = selected.name.replace('_', ' ')
                 applySorting()
             }
         }
+        btnPhotosTheme.setOnClickListener { showThemePicker() }
     }
 
     private fun setupVideosBrowserControls() {
@@ -547,7 +594,10 @@ class MainActivity : AppCompatActivity() {
         btnVideosViewMode.setOnClickListener {
             val isNowList = (videoViewMode == ViewMode.GRID)
             videoViewMode = if (isNowList) ViewMode.LIST else ViewMode.GRID
-            btnVideosViewMode.text = if (isNowList) "☰ LIST" else "▦ GRID"
+            btnVideosViewMode.text = if (isNowList) "LIST" else "GRID"
+            btnVideosViewMode.setCompoundDrawablesWithIntrinsicBounds(
+                if (isNowList) R.drawable.ic_view_list else R.drawable.ic_view_grid, 0, 0, 0
+            )
             rvVideos.recycledViewPool.clear()
             rvVideos.layoutManager = if (isNowList) LinearLayoutManager(this) else GridLayoutManager(this, 4)
             videoAdapter.notifyDataSetChanged()
@@ -555,10 +605,11 @@ class MainActivity : AppCompatActivity() {
         btnVideosSort.setOnClickListener {
             showSortDialog("Videos", videoSortMode) { selected ->
                 videoSortMode = selected
-                btnVideosSort.text = "⫽ ${selected.name.replace('_', ' ')}"
+                btnVideosSort.text = selected.name.replace('_', ' ')
                 applySorting()
             }
         }
+        btnVideosTheme.setOnClickListener { showThemePicker() }
     }
 
     private fun setupAudioBrowserControls() {
@@ -566,7 +617,10 @@ class MainActivity : AppCompatActivity() {
         btnAudioViewMode.setOnClickListener {
             val isNowList = (audioViewMode == ViewMode.GRID)
             audioViewMode = if (isNowList) ViewMode.LIST else ViewMode.GRID
-            btnAudioViewMode.text = if (isNowList) "☰ LIST" else "▦ GRID"
+            btnAudioViewMode.text = if (isNowList) "LIST" else "GRID"
+            btnAudioViewMode.setCompoundDrawablesWithIntrinsicBounds(
+                if (isNowList) R.drawable.ic_view_list else R.drawable.ic_view_grid, 0, 0, 0
+            )
             rvAudio.recycledViewPool.clear()
             rvAudio.layoutManager = if (isNowList) LinearLayoutManager(this) else GridLayoutManager(this, 4)
             audioAdapter.notifyDataSetChanged()
@@ -574,10 +628,11 @@ class MainActivity : AppCompatActivity() {
         btnAudioSort.setOnClickListener {
             showSortDialog("Audio", audioSortMode) { selected ->
                 audioSortMode = selected
-                btnAudioSort.text = "⫽ ${selected.name.replace('_', ' ')}"
+                btnAudioSort.text = selected.name.replace('_', ' ')
                 applySorting()
             }
         }
+        btnAudioTheme.setOnClickListener { showThemePicker() }
     }
 
     private fun showSortDialog(title: String, current: SortMode, onSelected: (SortMode) -> Unit) {
@@ -722,6 +777,11 @@ class MainActivity : AppCompatActivity() {
             showAudioTrackDialog()
         }
 
+        btnVideoTheme.setOnClickListener {
+            resetVideoHudTimer()
+            showThemePicker()
+        }
+
         sbVideoSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser && videoView.duration > 0) {
@@ -759,7 +819,7 @@ class MainActivity : AppCompatActivity() {
     private fun setPlaybackSpeed(speed: Float) {
         currentPlaybackSpeed = speed
         val label = "${speed}x"
-        btnVideoSpeed.text = "⚡ $label"
+        btnVideoSpeed.text = label
         tvVideoHudSpeed.text = label
         videoView.setPlaybackSpeed(speed)
     }
@@ -805,6 +865,11 @@ class MainActivity : AppCompatActivity() {
         btnAudioQueue.setOnClickListener {
             resetAudioHudTimer()
             showQueueOverlay(displayedAudioList, currentAudioIndex)
+        }
+
+        btnAudioPlayerTheme.setOnClickListener {
+            resetAudioHudTimer()
+            showThemePicker()
         }
 
         progressAudioSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -879,9 +944,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateLoopButtonUi() {
         val vText = when (videoLoopMode) {
-            LoopMode.OFF -> "🔁 LOOP"
-            LoopMode.SINGLE -> "🔂 LOOP: 1"
-            LoopMode.ALL -> "🔁 LOOP: ALL"
+            LoopMode.OFF -> "LOOP"
+            LoopMode.SINGLE -> "LOOP: 1"
+            LoopMode.ALL -> "LOOP: ALL"
         }
         btnVideoLoop.text = vText
         tvVideoHudLoop.text = when (videoLoopMode) {
@@ -891,15 +956,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         val aText = when (audioLoopMode) {
-            LoopMode.OFF -> "🔁 LOOP"
-            LoopMode.SINGLE -> "🔂 LOOP: 1"
-            LoopMode.ALL -> "🔁 LOOP: ALL"
+            LoopMode.OFF -> "LOOP"
+            LoopMode.SINGLE -> "LOOP: 1"
+            LoopMode.ALL -> "LOOP: ALL"
         }
         btnAudioLoop.text = aText
     }
 
     private fun updateBgPlayButtonUi() {
-        val label = if (isBackgroundPlayEnabled) "🎧 BG: ON" else "🎧 BG: OFF"
+        val label = if (isBackgroundPlayEnabled) "BG: ON" else "BG: OFF"
         btnVideoBgPlay.text = label
         btnAudioBgPlay.text = label
     }
@@ -933,7 +998,7 @@ class MainActivity : AppCompatActivity() {
                     val chosen = subTracks[which]
                     try {
                         videoView.selectSubtitleTrack(chosen.index)
-                        btnVideoSubs.text = if (chosen.index == -1) "💬 SUBS" else "💬 ${chosen.label}"
+                        btnVideoSubs.text = if (chosen.index == -1) "SUBS" else chosen.label
                     } catch (e: Exception) {
                         Log.w(PtpConstants.TAG, "Subtitle track selection failed", e)
                     }
@@ -977,7 +1042,7 @@ class MainActivity : AppCompatActivity() {
                     try {
                         videoView.selectAudioTrack(which)
                         val chosen = audioTracks[which]
-                        btnVideoAudioTrack.text = if (chosen.isAc3OrDolby) "🔊 DOLBY" else "🔊 ${chosen.language.ifBlank { "Track ${which + 1}" }}"
+                        btnVideoAudioTrack.text = if (chosen.isAc3OrDolby) "DOLBY" else (chosen.language.ifBlank { "Track ${which + 1}" })
                     } catch (e: Exception) {
                         Log.w(PtpConstants.TAG, "Audio track switch failed", e)
                     }
@@ -996,12 +1061,14 @@ class MainActivity : AppCompatActivity() {
         if (currentScreen == Screen.VIDEO_PLAYER) {
             if (videoView.isPlaying) {
                 videoView.pause()
-                btnVideoPlayPause.text = "▶ PLAY"
+                btnVideoPlayPause.text = "PLAY"
+                btnVideoPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play_arrow, 0, 0, 0)
                 showVideoHud()
                 updateMediaSessionState(PlaybackStateCompat.STATE_PAUSED, videoView.currentPosition.toLong())
             } else {
                 videoView.start()
-                btnVideoPlayPause.text = "⏸ PAUSE"
+                btnVideoPlayPause.text = "PAUSE"
+                btnVideoPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_pause, 0, 0, 0)
                 resetVideoHudTimer()
                 updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING, videoView.currentPosition.toLong())
             }
@@ -1010,13 +1077,15 @@ class MainActivity : AppCompatActivity() {
                 try {
                     if (mp.isPlaying) {
                         mp.pause()
-                        btnAudioPlayPause.text = "▶"
+                        btnAudioPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play_arrow, 0, 0, 0)
+                        audioEqualizerView.setPlaying(false)
                         tvAudioPlayerStatus.text = "[ PAUSED ]"
                         showAudioHud()
                         updateMediaSessionState(PlaybackStateCompat.STATE_PAUSED, mp.currentPosition.toLong())
                     } else {
                         mp.start()
-                        btnAudioPlayPause.text = "⏸"
+                        btnAudioPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_pause, 0, 0, 0)
+                        audioEqualizerView.setPlaying(true)
                         tvAudioPlayerStatus.text = "[ PLAYING ]"
                         resetAudioHudTimer()
                         updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING, mp.currentPosition.toLong())
@@ -1148,139 +1217,168 @@ class MainActivity : AppCompatActivity() {
         try {
             val serviceIntent = Intent(this, BackgroundPlayService::class.java)
             stopService(serviceIntent)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w(PtpConstants.TAG, "Could not stop background playback service", e)
+        }
     }
-
-    private var initJob: Job? = null
 
     private fun handleUsbState(state: UsbConnectionState) {
         when (state) {
             is UsbConnectionState.Idle -> {
-                initJob?.cancel()
-                tvStartStatus.text = ""
-                showScreen(Screen.START)
-            }
-            is UsbConnectionState.DeviceAttached -> {
-                tvStartStatus.text = getString(R.string.ptp_device_detected)
-            }
-            is UsbConnectionState.PermissionRequired -> {
-                tvStartStatus.text = getString(R.string.permission_required)
-            }
-            is UsbConnectionState.PermissionDenied -> {
-                initJob?.cancel()
-                tvStartStatus.text = getString(R.string.permission_denied)
-            }
-            is UsbConnectionState.Connected -> {
-                initJob?.cancel()
-                tvStartStatus.text = "PTP Initializing..."
-                showScreen(Screen.START)
-                initJob = lifecycleScope.launch {
-                    try {
-                        val success = repository.initialize(state.client, state.deviceName)
-                        if (success) {
-                            tvHomeDeviceName.text = repository.deviceName
-                            updateMediaCounts()
-                            showScreen(Screen.HOME)
-                            btnPhotos.requestFocus()
-                        } else {
-                            usbHostManager.disconnect()
-                            tvStartStatus.text = "PTP initialization failed.\nPlease check phone USB mode is set to 'PTP / Transfer photos'."
-                            showScreen(Screen.START)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(PtpConstants.TAG, "Error during PTP initialization", e)
-                        usbHostManager.disconnect()
-                        tvStartStatus.text = "Connection error during PTP setup.\nPlease reconnect USB."
-                        showScreen(Screen.START)
-                    }
+                runOnUiThread {
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.GONE
+                    tvStartStatus.visibility = View.VISIBLE
+                    tvStartStatus.text = getString(R.string.connect_phone)
                 }
-            }
-            is UsbConnectionState.Error -> {
-                initJob?.cancel()
-                tvStartStatus.text = state.message
-                showScreen(Screen.START)
             }
             is UsbConnectionState.Disconnected -> {
-                initJob?.cancel()
-                stopAndClearVideoPlayer()
-                stopAndClearAudioPlayer()
-                stopBackgroundService()
-                photoLoadJob?.cancel()
-                audioCachingJob?.cancel()
-                audioProgressJob?.cancel()
-                legacyPhotoThumbLoader.clear()
-                mediaThumbnailLoader.clear()
-                lifecycleScope.launch {
-                    try {
-                        repository.clear()
-                    } catch (_: Exception) {}
+                runOnUiThread {
+                    stopAndClearVideoPlayer()
+                    stopAndClearAudioPlayer()
+                    stopBackgroundService()
+                    showScreen(Screen.START)
+                    tvStartStatus.visibility = View.VISIBLE
+                    tvStartStatus.text = getString(R.string.phone_disconnected)
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.GONE
+                    lifecycleScope.launch { repository.clear() }
                 }
-                tvStartStatus.text = getString(R.string.phone_disconnected)
-                showScreen(Screen.START)
+            }
+            is UsbConnectionState.DeviceAttached -> {
+                runOnUiThread {
+                    showScreen(Screen.START)
+                    tvStartStatus.visibility = View.VISIBLE
+                    tvStartStatus.text = getString(R.string.ptp_device_detected)
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.VISIBLE
+                }
+            }
+            is UsbConnectionState.PermissionRequired -> {
+                runOnUiThread {
+                    showScreen(Screen.START)
+                    tvStartStatus.visibility = View.VISIBLE
+                    tvStartStatus.text = getString(R.string.permission_required)
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.VISIBLE
+                }
+            }
+            is UsbConnectionState.PermissionDenied -> {
+                runOnUiThread {
+                    showScreen(Screen.START)
+                    tvStartStatus.visibility = View.VISIBLE
+                    tvStartStatus.text = getString(R.string.permission_denied)
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.GONE
+                }
+            }
+            is UsbConnectionState.Connected -> {
+                handlePtpConnected(state.client, state.deviceName)
+            }
+            is UsbConnectionState.Error -> {
+                runOnUiThread {
+                    showScreen(Screen.START)
+                    tvStartStatus.visibility = View.VISIBLE
+                    tvStartStatus.text = state.message
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.GONE
+                }
             }
         }
     }
 
-    private fun updateMediaCounts() {
-        applySorting()
+    private fun handlePtpConnected(client: PtpClient, deviceName: String) {
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.Main) {
+                    tvStartStatus.visibility = View.VISIBLE
+                    tvStartStatus.text = "Reading storage..."
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.VISIBLE
+                }
 
-        val pCount = repository.photoItems.size
-        tvPhotosCount.text = " ($pCount items)"
-        tvEmptyPhotos.visibility = if (pCount == 0) View.VISIBLE else View.GONE
+                val ready = repository.initialize(client, deviceName)
 
-        val vCount = repository.videoItems.size
-        tvVideosCount.text = " ($vCount items)"
-        tvEmptyVideos.visibility = if (vCount == 0) View.VISIBLE else View.GONE
+                withContext(Dispatchers.Main) {
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.GONE
 
-        val aCount = repository.audioItems.size
-        tvAudioCount.text = " ($aCount items)"
-        tvEmptyAudio.visibility = if (aCount == 0) View.VISIBLE else View.GONE
+                    if (ready) {
+                        tvStartStatus.visibility = View.GONE
+                        tvHomeDeviceName.text = repository.deviceName.ifBlank { "PTP Phone" }
+
+                        displayedPhotoList.clear()
+                        displayedPhotoList.addAll(repository.photoItems)
+                        tvPhotosCount.text = "(${repository.photoItems.size})"
+                        tvEmptyPhotos.visibility = if (repository.photoItems.isEmpty()) View.VISIBLE else View.GONE
+                        photoAdapter.notifyDataSetChanged()
+
+                        displayedVideoList.clear()
+                        displayedVideoList.addAll(repository.videoItems)
+                        tvVideosCount.text = "(${repository.videoItems.size})"
+                        tvEmptyVideos.visibility = if (repository.videoItems.isEmpty()) View.VISIBLE else View.GONE
+                        videoAdapter.notifyDataSetChanged()
+
+                        displayedAudioList.clear()
+                        displayedAudioList.addAll(repository.audioItems)
+                        tvAudioCount.text = "(${repository.audioItems.size})"
+                        tvEmptyAudio.visibility = if (repository.audioItems.isEmpty()) View.VISIBLE else View.GONE
+                        audioAdapter.notifyDataSetChanged()
+
+                        showScreen(Screen.HOME)
+                        btnPhotos.requestFocus()
+                    } else {
+                        tvStartStatus.visibility = View.VISIBLE
+                        tvStartStatus.text = getString(R.string.session_failed)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(PtpConstants.TAG, "Error in handlePtpConnected", e)
+                withContext(Dispatchers.Main) {
+                    tvStartStatus.visibility = View.VISIBLE
+                    tvStartStatus.text = getString(R.string.session_failed)
+                    findViewById<ProgressBar>(R.id.progress_start).visibility = View.GONE
+                }
+            }
+        }
     }
 
-    private fun showScreen(screen: Screen) {
-        currentScreen = screen
-        screenStart.visibility = if (screen == Screen.START) View.VISIBLE else View.GONE
-        screenHome.visibility = if (screen == Screen.HOME) View.VISIBLE else View.GONE
-        screenPhotoBrowser.visibility = if (screen == Screen.PHOTO_BROWSER) View.VISIBLE else View.GONE
-        screenPhotoViewer.visibility = if (screen == Screen.PHOTO_VIEWER) View.VISIBLE else View.GONE
-        screenVideoBrowser.visibility = if (screen == Screen.VIDEO_BROWSER) View.VISIBLE else View.GONE
-        screenVideoPlayer.visibility = if (screen == Screen.VIDEO_PLAYER) View.VISIBLE else View.GONE
-        screenAudioBrowser.visibility = if (screen == Screen.AUDIO_BROWSER) View.VISIBLE else View.GONE
-        screenAudioPlayer.visibility = if (screen == Screen.AUDIO_PLAYER) View.VISIBLE else View.GONE
-
-        overlayQueue.visibility = View.GONE
-        overlayCopy.visibility = View.GONE
-
-        if (screen == Screen.PHOTO_VIEWER) {
-            screenPhotoViewer.requestFocus()
-        } else if (screen == Screen.VIDEO_PLAYER) {
-            showVideoHud()
-            btnVideoPlayPause.requestFocus()
-        } else if (screen == Screen.AUDIO_PLAYER) {
-            showAudioHud()
-            btnAudioPlayPause.requestFocus()
+    private fun loadMediaMetadata(item: PtpMediaItem) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            repository.fetchMetadataIfNeeded(item)
+            withContext(Dispatchers.Main) {
+                if (item.isVideo) {
+                    val idx = displayedVideoList.indexOfFirst { it.handle == item.handle }
+                    if (idx != -1) videoAdapter.notifyItemChanged(idx)
+                } else if (item.isAudio) {
+                    val idx = displayedAudioList.indexOfFirst { it.handle == item.handle }
+                    if (idx != -1) audioAdapter.notifyItemChanged(idx)
+                }
+            }
         }
     }
 
     private fun loadSelectedPhoto(index: Int) {
         if (index < 0 || index >= displayedPhotoList.size) return
-        val item = displayedPhotoList[index]
 
+        val item = displayedPhotoList[index]
         photoLoadJob?.cancel()
-        ivFullPhoto.setImageBitmap(null)
+
         progressPhoto.visibility = View.VISIBLE
         tvPhotoError.visibility = View.GONE
+        ivFullPhoto.setImageBitmap(null)
 
         photoLoadJob = lifecycleScope.launch {
-            val bitmap = repository.loadFullPhoto(item.handle, maxDim = 1920)
-            progressPhoto.visibility = View.GONE
-            if (bitmap != null) {
-                ivFullPhoto.setImageBitmap(bitmap)
-                tvPhotoError.visibility = View.GONE
-            } else {
-                tvPhotoError.visibility = View.VISIBLE
+            try {
+                val bmp = repository.loadFullPhoto(item.handle)
+                if (bmp != null) {
+                    ivFullPhoto.setImageBitmap(bmp)
+                    progressPhoto.visibility = View.GONE
+                } else {
+                    showPhotoError()
+                }
+            } catch (e: Exception) {
+                Log.e(PtpConstants.TAG, "Error loading full photo", e)
+                showPhotoError()
             }
         }
+    }
+
+    private fun showPhotoError() {
+        progressPhoto.visibility = View.GONE
+        tvPhotoError.visibility = View.VISIBLE
     }
 
     fun playVideoAtIndex(index: Int) {
@@ -1294,7 +1392,6 @@ class MainActivity : AppCompatActivity() {
         val client = repository.client ?: return
         val sessionId = ++currentVideoSessionId
 
-        // Cancel previous session, jobs, and player immediately
         videoProgressJob?.cancel()
         videoPlaybackManager.closeCurrentSession()
         videoView.stopPlayback()
@@ -1309,9 +1406,10 @@ class MainActivity : AppCompatActivity() {
         tvVideoTimeCurrent.text = "00:00"
         tvVideoTimeTotal.text = "00:00"
         sbVideoSeek.progress = 0
-        btnVideoPlayPause.text = "⏸ PAUSE"
-        btnVideoAudioTrack.text = "🔊 AUDIO"
-        btnVideoSubs.text = "💬 SUBS"
+        btnVideoPlayPause.text = "PAUSE"
+        btnVideoPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_pause, 0, 0, 0)
+        btnVideoAudioTrack.text = "AUDIO"
+        btnVideoSubs.text = "SUBS"
         currentPlaybackSpeed = 1.0f
         setPlaybackSpeed(1.0f)
         updateLoopButtonUi()
@@ -1353,7 +1451,8 @@ class MainActivity : AppCompatActivity() {
 
                 videoView.setPlaybackSpeed(currentPlaybackSpeed)
                 videoView.start()
-                btnVideoPlayPause.text = "⏸ PAUSE"
+                btnVideoPlayPause.text = "PAUSE"
+                btnVideoPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_pause, 0, 0, 0)
 
                 val duration = videoView.duration
                 if (duration > 0) {
@@ -1380,7 +1479,7 @@ class MainActivity : AppCompatActivity() {
                 val ext = item.filename.substringAfterLast('.', "VIDEO").uppercase()
                 if (hasAc3) {
                     tvVideoBadgeFormat.text = "$ext • DOLBY AC-3"
-                    btnVideoAudioTrack.text = "🔊 DOLBY"
+                    btnVideoAudioTrack.text = "DOLBY"
                 } else {
                     tvVideoBadgeFormat.text = ext
                 }
@@ -1394,7 +1493,8 @@ class MainActivity : AppCompatActivity() {
                 tvVideoError.text = getString(R.string.video_codec_unsupported)
                 tvVideoError.visibility = View.VISIBLE
                 showVideoHud()
-                btnVideoPlayPause.text = "▶ PLAY"
+                btnVideoPlayPause.text = "PLAY"
+                btnVideoPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play_arrow, 0, 0, 0)
                 updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
             }
         }
@@ -1404,7 +1504,8 @@ class MainActivity : AppCompatActivity() {
                 updateMediaSessionState(PlaybackStateCompat.STATE_STOPPED, videoView.duration.toLong())
                 when (videoLoopMode) {
                     LoopMode.OFF -> {
-                        btnVideoPlayPause.text = "▶ PLAY"
+                        btnVideoPlayPause.text = "PLAY"
+                        btnVideoPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play_arrow, 0, 0, 0)
                         showVideoHud()
                         if (currentVideoIndex < displayedVideoList.size - 1) {
                             playVideoAtIndex(currentVideoIndex + 1)
@@ -1492,7 +1593,7 @@ class MainActivity : AppCompatActivity() {
         tvAudioTimeCurrent.text = "00:00"
         tvAudioTimeTotal.text = "00:00"
         progressAudioSeek.progress = 0
-        btnAudioPlayPause.text = "⏸"
+        btnAudioPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_pause, 0, 0, 0)
         updateLoopButtonUi()
 
         tvAudioBuffering.text = getString(R.string.buffering)
@@ -1523,7 +1624,8 @@ class MainActivity : AppCompatActivity() {
                         layoutAudioBuffering.visibility = View.GONE
                         player.isLooping = (audioLoopMode == LoopMode.SINGLE)
                         player.start()
-                        btnAudioPlayPause.text = "⏸"
+                        btnAudioPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_pause, 0, 0, 0)
+                        audioEqualizerView.setPlaying(true)
                         tvAudioPlayerStatus.text = "[ PLAYING ]"
                         tvAudioTimeTotal.text = formatTime(player.duration)
                         updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING, 0L)
@@ -1537,7 +1639,8 @@ class MainActivity : AppCompatActivity() {
                         tvAudioError.text = getString(R.string.audio_codec_unsupported)
                         tvAudioError.visibility = View.VISIBLE
                         tvAudioPlayerStatus.text = "[ ERROR ]"
-                        btnAudioPlayPause.text = "▶"
+                        btnAudioPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play_arrow, 0, 0, 0)
+                        audioEqualizerView.setPlaying(false)
                         showAudioHud()
                         updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
                         true
@@ -1545,12 +1648,13 @@ class MainActivity : AppCompatActivity() {
                     mp.setOnCompletionListener {
                         if (sessionId != currentAudioSessionId) return@setOnCompletionListener
                         tvAudioPlayerStatus.text = "[ FINISHED ]"
+                        audioEqualizerView.setPlaying(false)
                         progressAudioSeek.progress = 1000
                         updateMediaSessionState(PlaybackStateCompat.STATE_STOPPED, mp.duration.toLong())
 
                         when (audioLoopMode) {
                             LoopMode.OFF -> {
-                                btnAudioPlayPause.text = "▶"
+                                btnAudioPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play_arrow, 0, 0, 0)
                                 showAudioHud()
                                 if (currentAudioIndex < displayedAudioList.size - 1) {
                                     playAudioAtIndex(currentAudioIndex + 1)
@@ -1559,6 +1663,7 @@ class MainActivity : AppCompatActivity() {
                             LoopMode.SINGLE -> {
                                 mp.seekTo(0)
                                 mp.start()
+                                audioEqualizerView.setPlaying(true)
                             }
                             LoopMode.ALL -> {
                                 val nextIdx = (currentAudioIndex + 1) % displayedAudioList.size
@@ -1574,6 +1679,7 @@ class MainActivity : AppCompatActivity() {
                         tvAudioError.text = getString(R.string.audio_codec_unsupported)
                         tvAudioError.visibility = View.VISIBLE
                         tvAudioPlayerStatus.text = "[ ERROR ]"
+                        audioEqualizerView.setPlaying(false)
                         showAudioHud()
                     }
                 }
@@ -1583,6 +1689,7 @@ class MainActivity : AppCompatActivity() {
                     tvAudioError.text = getString(R.string.audio_load_failed)
                     tvAudioError.visibility = View.VISIBLE
                     tvAudioPlayerStatus.text = "[ FAILED ]"
+                    audioEqualizerView.setPlaying(false)
                     showAudioHud()
                 }
             }
@@ -1614,15 +1721,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formatTime(millis: Int): String {
-        val totalSecs = (millis / 1000).coerceAtLeast(0)
-        val mins = totalSecs / 60
-        val secs = totalSecs % 60
+        val totalSec = (millis / 1000).coerceAtLeast(0)
+        val mins = totalSec / 60
+        val secs = totalSec % 60
         return String.format("%02d:%02d", mins, secs)
     }
 
     private fun stopAudioPlaybackOnly() {
         hudHandler.removeCallbacks(hideAudioHudRunnable)
         audioProgressJob?.cancel()
+        audioEqualizerView.setPlaying(false)
         audioPlayer?.let {
             try {
                 it.setOnPreparedListener(null)
@@ -1662,15 +1770,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // If Copy Overlay is open, handle Back to cancel it
-        if (overlayCopy.visibility == View.VISIBLE) {
-            if (keyCode == KeyEvent.KEYCODE_BACK) {
-                contextMenuHelper.cancelCopy()
-                overlayCopy.visibility = View.GONE
-                return true
-            }
-        }
-
         when (currentScreen) {
             Screen.PHOTO_VIEWER -> {
                 when (keyCode) {
@@ -1688,15 +1787,8 @@ class MainActivity : AppCompatActivity() {
                         }
                         return true
                     }
-                    KeyEvent.KEYCODE_MENU -> {
-                        if (currentPhotoIndex in displayedPhotoList.indices) {
-                            contextMenuHelper.showContextMenu(displayedPhotoList[currentPhotoIndex])
-                        }
-                        return true
-                    }
                     KeyEvent.KEYCODE_BACK -> {
                         photoLoadJob?.cancel()
-                        ivFullPhoto.setImageBitmap(null)
                         showScreen(Screen.PHOTO_BROWSER)
                         rvPhotos.requestFocus()
                         return true
@@ -1837,6 +1929,18 @@ class MainActivity : AppCompatActivity() {
         }
         return super.onKeyDown(keyCode, event)
     }
+
+    private fun showScreen(screen: Screen) {
+        currentScreen = screen
+        screenStart.visibility = if (screen == Screen.START) View.VISIBLE else View.GONE
+        screenHome.visibility = if (screen == Screen.HOME) View.VISIBLE else View.GONE
+        screenPhotoBrowser.visibility = if (screen == Screen.PHOTO_BROWSER) View.VISIBLE else View.GONE
+        screenPhotoViewer.visibility = if (screen == Screen.PHOTO_VIEWER) View.VISIBLE else View.GONE
+        screenVideoBrowser.visibility = if (screen == Screen.VIDEO_BROWSER) View.VISIBLE else View.GONE
+        screenVideoPlayer.visibility = if (screen == Screen.VIDEO_PLAYER) View.VISIBLE else View.GONE
+        screenAudioBrowser.visibility = if (screen == Screen.AUDIO_BROWSER) View.VISIBLE else View.GONE
+        screenAudioPlayer.visibility = if (screen == Screen.AUDIO_PLAYER) View.VISIBLE else View.GONE
+    }
 }
 
 // =================== RECYCLERVIEW ADAPTERS ===================
@@ -1867,6 +1971,7 @@ class PhotoAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoViewHolder {
         val layoutId = if (viewType == VIEW_TYPE_LIST) R.layout.item_photo_list else R.layout.item_photo
         val view = LayoutInflater.from(parent.context).inflate(layoutId, parent, false)
+        TvFocusAnimator.attach(view)
         return PhotoViewHolder(view)
     }
 
@@ -1917,6 +2022,7 @@ class VideoAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
         val layoutId = if (viewType == VIEW_TYPE_LIST) R.layout.item_video_list else R.layout.item_video
         val view = LayoutInflater.from(parent.context).inflate(layoutId, parent, false)
+        TvFocusAnimator.attach(view)
         return VideoViewHolder(view)
     }
 
@@ -1973,6 +2079,7 @@ class AudioAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AudioViewHolder {
         val layoutId = if (viewType == VIEW_TYPE_LIST) R.layout.item_audio_list else R.layout.item_audio
         val view = LayoutInflater.from(parent.context).inflate(layoutId, parent, false)
+        TvFocusAnimator.attach(view)
         return AudioViewHolder(view)
     }
 
@@ -2022,6 +2129,7 @@ class QueueAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): QueueViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_queue, parent, false)
+        TvFocusAnimator.attach(view)
         return QueueViewHolder(view)
     }
 

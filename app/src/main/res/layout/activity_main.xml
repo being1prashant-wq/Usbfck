@@ -70,60 +70,101 @@
         android:padding="32dp"
         android:visibility="gone">
 
-        <TextView
-            android:id="@+id/tv_home_device_name"
-            android:layout_width="wrap_content"
+        <!-- Top Header with Theme Switcher -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:textSize="28sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <TextView
+                android:id="@+id/tv_home_device_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/white"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_home_theme"
+                android:layout_width="wrap_content"
+                android:layout_height="42dp"
+                android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_palette"
+                android:drawablePadding="8dp"
+                android:focusable="true"
+                android:minWidth="110dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:text="THEME"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tv_home_subtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="PTP Device Connected"
+            android:text="PTP Device Connected • Ready to Play"
             android:textColor="@color/text_secondary"
-            android:textSize="18sp" />
+            android:textSize="16sp" />
 
+        <!-- Media Category Cards -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="48dp"
+            android:layout_marginTop="40dp"
             android:orientation="horizontal">
 
             <Button
                 android:id="@+id/btn_photos"
-                android:layout_width="200dp"
-                android:layout_height="64dp"
+                android:layout_width="210dp"
+                android:layout_height="80dp"
                 android:background="@drawable/bg_button_focus"
+                android:drawableStart="@drawable/ic_photo"
+                android:drawablePadding="14dp"
                 android:focusable="true"
-                android:text="@string/btn_photos"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:text="PHOTOS"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
             <Button
                 android:id="@+id/btn_videos"
-                android:layout_width="200dp"
-                android:layout_height="64dp"
+                android:layout_width="210dp"
+                android:layout_height="80dp"
                 android:layout_marginStart="24dp"
                 android:background="@drawable/bg_button_focus"
+                android:drawableStart="@drawable/ic_movie"
+                android:drawablePadding="14dp"
                 android:focusable="true"
-                android:text="@string/btn_videos"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:text="VIDEOS"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
             <Button
                 android:id="@+id/btn_audio"
-                android:layout_width="200dp"
-                android:layout_height="64dp"
+                android:layout_width="210dp"
+                android:layout_height="80dp"
                 android:layout_marginStart="24dp"
                 android:background="@drawable/bg_button_focus"
+                android:drawableStart="@drawable/ic_headphones"
+                android:drawablePadding="14dp"
                 android:focusable="true"
-                android:text="@string/btn_audio"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:text="AUDIO"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -183,23 +224,47 @@
             <Button
                 android:id="@+id/btn_photos_sort"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="38dp"
                 android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_sort"
+                android:drawablePadding="6dp"
                 android:focusable="true"
                 android:minWidth="90dp"
-                android:text="⫽ SORT: DEFAULT"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="SORT"
                 android:textColor="@color/white"
                 android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btn_photos_view_mode"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="38dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_view_grid"
+                android:drawablePadding="6dp"
                 android:focusable="true"
-                android:minWidth="76dp"
-                android:text="▦ GRID"
+                android:minWidth="80dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="GRID"
+                android:textColor="@color/white"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/btn_photos_theme"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_palette"
+                android:drawablePadding="6dp"
+                android:focusable="true"
+                android:minWidth="80dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="THEME"
                 android:textColor="@color/white"
                 android:textSize="12sp" />
 
@@ -257,8 +322,8 @@
 
         <ProgressBar
             android:id="@+id/progress_photo"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:layout_gravity="center"
             android:indeterminateTint="@color/white"
             android:visibility="gone" />
@@ -269,24 +334,9 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:text="@string/photo_load_failed"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/white"
             android:textSize="18sp"
             android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/tv_photo_controls_hint"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="16dp"
-            android:background="#88000000"
-            android:paddingStart="16dp"
-            android:paddingTop="6dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="6dp"
-            android:text="[◀ / ▶] Previous / Next   [BACK] Exit"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp" />
 
     </FrameLayout>
 
@@ -333,23 +383,47 @@
             <Button
                 android:id="@+id/btn_videos_sort"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="38dp"
                 android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_sort"
+                android:drawablePadding="6dp"
                 android:focusable="true"
                 android:minWidth="90dp"
-                android:text="⫽ SORT: DEFAULT"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="SORT"
                 android:textColor="@color/white"
                 android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btn_videos_view_mode"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="38dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_view_grid"
+                android:drawablePadding="6dp"
                 android:focusable="true"
-                android:minWidth="76dp"
-                android:text="▦ GRID"
+                android:minWidth="80dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="GRID"
+                android:textColor="@color/white"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/btn_videos_theme"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_palette"
+                android:drawablePadding="6dp"
+                android:focusable="true"
+                android:minWidth="80dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="THEME"
                 android:textColor="@color/white"
                 android:textSize="12sp" />
 
@@ -398,59 +472,58 @@
         android:focusable="true"
         android:visibility="gone">
 
+        <!-- Modern Surface Video Renderer (Custom DirectVideoView) -->
         <com.example.media.DirectVideoView
             android:id="@+id/video_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_gravity="center" />
 
-        <!-- Buffering Indicator with progress text -->
+        <!-- Buffering Indicator Overlay -->
         <LinearLayout
             android:id="@+id/layout_video_buffering"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:background="@drawable/bg_player_control"
+            android:background="@drawable/bg_badge"
             android:gravity="center"
             android:orientation="horizontal"
-            android:paddingStart="24dp"
-            android:paddingTop="14dp"
-            android:paddingEnd="24dp"
-            android:paddingBottom="14dp"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="8dp"
             android:visibility="gone">
 
             <ProgressBar
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:indeterminateTint="@color/white" />
 
             <TextView
                 android:id="@+id/tv_buffering"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="10dp"
                 android:text="@string/buffering"
                 android:textColor="@color/white"
-                android:textSize="15sp"
-                android:textStyle="bold" />
+                android:textSize="14sp" />
 
         </LinearLayout>
 
-        <!-- Genuine Error Display only shown on actual failure -->
+        <!-- Video Error View -->
         <TextView
             android:id="@+id/tv_video_error"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:background="@drawable/bg_player_control"
-            android:padding="24dp"
+            android:padding="20dp"
             android:text="@string/video_codec_unsupported"
-            android:textAlignment="center"
             android:textColor="@color/white"
             android:textSize="16sp"
             android:visibility="gone" />
 
-        <!-- Top HUD Bar Overlay (Auto-hides with controls) -->
+        <!-- Top Header OSD Bar -->
         <LinearLayout
             android:id="@+id/layout_video_top_bar"
             android:layout_width="match_parent"
@@ -462,7 +535,7 @@
             android:paddingStart="32dp"
             android:paddingTop="20dp"
             android:paddingEnd="32dp"
-            android:paddingBottom="36dp"
+            android:paddingBottom="24dp"
             android:visibility="visible">
 
             <TextView
@@ -470,12 +543,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_badge"
-                android:paddingStart="8dp"
-                android:paddingTop="3dp"
-                android:paddingEnd="8dp"
-                android:paddingBottom="3dp"
-                android:text="VIDEO"
-                android:textColor="@color/tv_accent_glow"
+                android:paddingStart="10dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="4dp"
+                android:text="DIRECT"
+                android:textColor="@color/white"
                 android:textSize="11sp"
                 android:textStyle="bold" />
 
@@ -484,18 +557,19 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="12dp"
+                android:layout_marginEnd="16dp"
                 android:layout_weight="1"
-                android:ellipsize="end"
+                android:ellipsize="middle"
                 android:maxLines="1"
                 android:textColor="@color/white"
-                android:textSize="18sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tv_video_hud_speed"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="12dp"
+                android:layout_marginEnd="8dp"
                 android:background="@drawable/bg_badge"
                 android:paddingStart="8dp"
                 android:paddingTop="3dp"
@@ -598,21 +672,27 @@
                     android:layout_width="wrap_content"
                     android:layout_height="44dp"
                     android:background="@drawable/bg_player_control"
+                    android:drawableStart="@drawable/ic_skip_previous"
                     android:focusable="true"
-                    android:minWidth="64dp"
-                    android:text="⏮"
+                    android:minWidth="56dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
                     android:textColor="@color/white"
-                    android:textSize="15sp" />
+                    android:textSize="14sp" />
 
                 <Button
                     android:id="@+id/btn_video_rewind10"
                     android:layout_width="wrap_content"
                     android:layout_height="44dp"
-                    android:layout_marginStart="12dp"
+                    android:layout_marginStart="10dp"
                     android:background="@drawable/bg_player_control"
+                    android:drawableStart="@drawable/ic_fast_rewind"
+                    android:drawablePadding="4dp"
                     android:focusable="true"
                     android:minWidth="72dp"
-                    android:text="⏪ 10s"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="-10s"
                     android:textColor="@color/white"
                     android:textSize="13sp" />
 
@@ -620,24 +700,32 @@
                     android:id="@+id/btn_video_play_pause"
                     android:layout_width="wrap_content"
                     android:layout_height="48dp"
-                    android:layout_marginStart="14dp"
+                    android:layout_marginStart="12dp"
                     android:background="@drawable/bg_player_play_pause"
+                    android:drawableStart="@drawable/ic_play_arrow"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
-                    android:minWidth="88dp"
-                    android:text="⏯ PLAY"
+                    android:minWidth="96dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="PLAY"
                     android:textColor="@color/white"
-                    android:textSize="15sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
 
                 <Button
                     android:id="@+id/btn_video_forward10"
                     android:layout_width="wrap_content"
                     android:layout_height="44dp"
-                    android:layout_marginStart="14dp"
+                    android:layout_marginStart="12dp"
                     android:background="@drawable/bg_player_control"
+                    android:drawableEnd="@drawable/ic_fast_forward"
+                    android:drawablePadding="4dp"
                     android:focusable="true"
                     android:minWidth="72dp"
-                    android:text="10s ⏩"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="+10s"
                     android:textColor="@color/white"
                     android:textSize="13sp" />
 
@@ -645,13 +733,15 @@
                     android:id="@+id/btn_video_next"
                     android:layout_width="wrap_content"
                     android:layout_height="44dp"
-                    android:layout_marginStart="12dp"
+                    android:layout_marginStart="10dp"
                     android:background="@drawable/bg_player_control"
+                    android:drawableStart="@drawable/ic_skip_next"
                     android:focusable="true"
-                    android:minWidth="64dp"
-                    android:text="⏭"
+                    android:minWidth="56dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
                     android:textColor="@color/white"
-                    android:textSize="15sp" />
+                    android:textSize="14sp" />
 
             </LinearLayout>
 
@@ -670,9 +760,13 @@
                     android:layout_width="wrap_content"
                     android:layout_height="38dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_subtitles"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
                     android:minWidth="76dp"
-                    android:text="💬 SUBS"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="SUBS"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
@@ -680,11 +774,15 @@
                     android:id="@+id/btn_video_audio_track"
                     android:layout_width="wrap_content"
                     android:layout_height="38dp"
-                    android:layout_marginStart="10dp"
+                    android:layout_marginStart="8dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_audio_track"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
                     android:minWidth="76dp"
-                    android:text="🔊 AUDIO"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="AUDIO"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
@@ -692,11 +790,15 @@
                     android:id="@+id/btn_video_speed"
                     android:layout_width="wrap_content"
                     android:layout_height="38dp"
-                    android:layout_marginStart="10dp"
+                    android:layout_marginStart="8dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_speed"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
                     android:minWidth="76dp"
-                    android:text="⚡ 1.0x"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="1.0x"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
@@ -704,11 +806,15 @@
                     android:id="@+id/btn_video_loop"
                     android:layout_width="wrap_content"
                     android:layout_height="38dp"
-                    android:layout_marginStart="10dp"
+                    android:layout_marginStart="8dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_repeat"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
                     android:minWidth="72dp"
-                    android:text="🔁 LOOP"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="LOOP"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
@@ -716,11 +822,15 @@
                     android:id="@+id/btn_video_bg_play"
                     android:layout_width="wrap_content"
                     android:layout_height="38dp"
-                    android:layout_marginStart="10dp"
+                    android:layout_marginStart="8dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_headphones"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
                     android:minWidth="80dp"
-                    android:text="🎧 BG PLAY"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="BG PLAY"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
@@ -728,11 +838,31 @@
                     android:id="@+id/btn_video_queue"
                     android:layout_width="wrap_content"
                     android:layout_height="38dp"
-                    android:layout_marginStart="10dp"
+                    android:layout_marginStart="8dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_queue_music"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
                     android:minWidth="76dp"
-                    android:text="📑 QUEUE"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="QUEUE"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btn_video_theme"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_palette"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:minWidth="76dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="THEME"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
@@ -785,23 +915,47 @@
             <Button
                 android:id="@+id/btn_audio_sort"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="38dp"
                 android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_sort"
+                android:drawablePadding="6dp"
                 android:focusable="true"
                 android:minWidth="90dp"
-                android:text="⫽ SORT: DEFAULT"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="SORT"
                 android:textColor="@color/white"
                 android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btn_audio_view_mode"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="38dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_view_grid"
+                android:drawablePadding="6dp"
                 android:focusable="true"
-                android:minWidth="76dp"
-                android:text="▦ GRID"
+                android:minWidth="80dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="GRID"
+                android:textColor="@color/white"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/btn_audio_theme"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_pill"
+                android:drawableStart="@drawable/ic_palette"
+                android:drawablePadding="6dp"
+                android:focusable="true"
+                android:minWidth="80dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="THEME"
                 android:textColor="@color/white"
                 android:textSize="12sp" />
 
@@ -841,7 +995,7 @@
 
     </LinearLayout>
 
-    <!-- 8. AUDIO PLAYER SCREEN (Modern Immersive: Ambient Artwork, Large Hero Artwork, Clean Auto-Hiding Controls) -->
+    <!-- 8. AUDIO PLAYER SCREEN (Spotify/VLC Hybrid: Ambient Backdrop, Album Art, Animated Equalizer, Minimal HUD) -->
     <FrameLayout
         android:id="@+id/screen_audio_player"
         android:layout_width="match_parent"
@@ -864,7 +1018,7 @@
             android:layout_height="match_parent"
             android:background="#99090C11" />
 
-        <!-- Centered Hero Artwork & Metadata -->
+        <!-- Centered Hero Artwork & Animated Visualizer -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -873,30 +1027,45 @@
             android:orientation="vertical"
             android:padding="20dp">
 
-            <!-- Primary Focus: Large, Elevated Hero Artwork -->
+            <!-- Hero Artwork -->
             <ImageView
                 android:id="@+id/iv_audio_player_art"
-                android:layout_width="280dp"
-                android:layout_height="280dp"
+                android:layout_width="260dp"
+                android:layout_height="260dp"
                 android:background="@drawable/bg_album_art"
                 android:contentDescription="@string/audio_item"
                 android:elevation="12dp"
-                android:padding="12dp"
+                android:padding="10dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_audio_placeholder" />
 
-            <!-- Song Title (Hidden to keep player minimal & artwork-dominant) -->
+            <!-- Song Title Header -->
             <TextView
                 android:id="@+id/tv_audio_player_title"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone" />
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:ellipsize="middle"
+                android:maxLines="1"
+                android:textColor="@color/white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
-            <!-- Status Indicator (Hidden to prevent duplicate clutter) -->
+            <!-- Dynamic Animated Equalizer Frequency Visualizer -->
+            <com.example.media.EqualizerView
+                android:id="@+id/audio_equalizer_view"
+                android:layout_width="48dp"
+                android:layout_height="22dp"
+                android:layout_marginTop="8dp" />
+
+            <!-- Status Indicator -->
             <TextView
                 android:id="@+id/tv_audio_player_status"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
                 android:visibility="gone" />
 
             <!-- Buffering Indicator -->
@@ -904,7 +1073,7 @@
                 android:id="@+id/layout_audio_buffering"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/bg_badge"
                 android:gravity="center"
                 android:orientation="horizontal"
@@ -1021,11 +1190,13 @@
                     android:layout_width="wrap_content"
                     android:layout_height="44dp"
                     android:background="@drawable/bg_player_control"
+                    android:drawableStart="@drawable/ic_skip_previous"
                     android:focusable="true"
-                    android:minWidth="60dp"
-                    android:text="⏮"
+                    android:minWidth="56dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
                     android:textColor="@color/white"
-                    android:textSize="15sp" />
+                    android:textSize="14sp" />
 
                 <Button
                     android:id="@+id/btn_audio_rewind10"
@@ -1033,9 +1204,13 @@
                     android:layout_height="44dp"
                     android:layout_marginStart="10dp"
                     android:background="@drawable/bg_player_control"
+                    android:drawableStart="@drawable/ic_fast_rewind"
+                    android:drawablePadding="4dp"
                     android:focusable="true"
-                    android:minWidth="68dp"
-                    android:text="⏪ 10s"
+                    android:minWidth="70dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="-10s"
                     android:textColor="@color/white"
                     android:textSize="13sp" />
 
@@ -1045,12 +1220,13 @@
                     android:layout_height="48dp"
                     android:layout_marginStart="12dp"
                     android:background="@drawable/bg_player_play_pause"
+                    android:drawableStart="@drawable/ic_play_arrow"
                     android:focusable="true"
-                    android:minWidth="80dp"
-                    android:text="⏯"
+                    android:minWidth="60dp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
                     android:textColor="@color/white"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:textSize="14sp" />
 
                 <Button
                     android:id="@+id/btn_audio_forward10"
@@ -1058,9 +1234,13 @@
                     android:layout_height="44dp"
                     android:layout_marginStart="12dp"
                     android:background="@drawable/bg_player_control"
+                    android:drawableEnd="@drawable/ic_fast_forward"
+                    android:drawablePadding="4dp"
                     android:focusable="true"
-                    android:minWidth="68dp"
-                    android:text="10s ⏩"
+                    android:minWidth="70dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="+10s"
                     android:textColor="@color/white"
                     android:textSize="13sp" />
 
@@ -1070,21 +1250,27 @@
                     android:layout_height="44dp"
                     android:layout_marginStart="10dp"
                     android:background="@drawable/bg_player_control"
+                    android:drawableStart="@drawable/ic_skip_next"
                     android:focusable="true"
-                    android:minWidth="60dp"
-                    android:text="⏭"
+                    android:minWidth="56dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
                     android:textColor="@color/white"
-                    android:textSize="15sp" />
+                    android:textSize="14sp" />
 
                 <Button
                     android:id="@+id/btn_audio_loop"
                     android:layout_width="wrap_content"
                     android:layout_height="40dp"
-                    android:layout_marginStart="14dp"
+                    android:layout_marginStart="12dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_repeat"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
-                    android:minWidth="68dp"
-                    android:text="🔁 LOOP"
+                    android:minWidth="72dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="LOOP"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
@@ -1094,9 +1280,13 @@
                     android:layout_height="40dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_headphones"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
                     android:minWidth="76dp"
-                    android:text="🎧 BG PLAY"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="BG PLAY"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
@@ -1106,9 +1296,29 @@
                     android:layout_height="40dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_queue_music"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
                     android:minWidth="72dp"
-                    android:text="📑 QUEUE"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="QUEUE"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btn_audio_player_theme"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_palette"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:minWidth="72dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="THEME"
                     android:textColor="@color/white"
                     android:textSize="12sp" />
 
