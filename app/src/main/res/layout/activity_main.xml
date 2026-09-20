@@ -1275,6 +1275,22 @@
                     android:textSize="12sp" />
 
                 <Button
+                    android:id="@+id/btn_audio_shuffle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_player_pill"
+                    android:drawableStart="@drawable/ic_shuffle"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:minWidth="76dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="SHUFFLE"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <Button
                     android:id="@+id/btn_audio_bg_play"
                     android:layout_width="wrap_content"
                     android:layout_height="40dp"

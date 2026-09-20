@@ -242,6 +242,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnAudioForward10: Button
     private lateinit var btnAudioNext: Button
     private lateinit var btnAudioLoop: Button
+    private lateinit var btnAudioShuffle: Button
     private lateinit var btnAudioBgPlay: Button
     private lateinit var btnAudioQueue: Button
     private lateinit var btnAudioPlayerTheme: Button
@@ -256,6 +257,7 @@ class MainActivity : AppCompatActivity() {
     // Playback state configurations
     private var videoLoopMode: LoopMode = LoopMode.OFF
     private var audioLoopMode: LoopMode = LoopMode.OFF
+    private var isAudioShuffleEnabled: Boolean = false
     private var isBackgroundPlayEnabled: Boolean = false
 
     private var currentScreen: Screen = Screen.START
@@ -426,11 +428,13 @@ class MainActivity : AppCompatActivity() {
         btnAudioForward10 = findViewById(R.id.btn_audio_forward10)
         btnAudioNext = findViewById(R.id.btn_audio_next)
         btnAudioLoop = findViewById(R.id.btn_audio_loop)
+        btnAudioShuffle = findViewById(R.id.btn_audio_shuffle)
         btnAudioBgPlay = findViewById(R.id.btn_audio_bg_play)
         btnAudioQueue = findViewById(R.id.btn_audio_queue)
         btnAudioPlayerTheme = findViewById(R.id.btn_audio_player_theme)
 
         setupAudioControls()
+        updateShuffleButtonUi()
 
         // Attach TV Focus Animation to all interactive views
         val interactiveViews = listOf(
@@ -441,7 +445,7 @@ class MainActivity : AppCompatActivity() {
             btnVideoPrev, btnVideoRewind10, btnVideoPlayPause, btnVideoForward10, btnVideoNext,
             btnVideoSubs, btnVideoAudioTrack, btnVideoSpeed, btnVideoLoop, btnVideoBgPlay, btnVideoQueue, btnVideoTheme,
             btnAudioPrev, btnAudioRewind10, btnAudioPlayPause, btnAudioForward10, btnAudioNext,
-            btnAudioLoop, btnAudioBgPlay, btnAudioQueue, btnAudioPlayerTheme,
+            btnAudioLoop, btnAudioShuffle, btnAudioBgPlay, btnAudioQueue, btnAudioPlayerTheme,
             btnCloseQueue, btnCancelCopy
         )
         for (v in interactiveViews) {
@@ -856,6 +860,13 @@ class MainActivity : AppCompatActivity() {
             updateLoopButtonUi()
         }
 
+        btnAudioShuffle.setOnClickListener {
+            resetAudioHudTimer()
+            isAudioShuffleEnabled = !isAudioShuffleEnabled
+            updateShuffleButtonUi()
+            Toast.makeText(this, if (isAudioShuffleEnabled) "Shuffle: ON" else "Shuffle: OFF", Toast.LENGTH_SHORT).show()
+        }
+
         btnAudioBgPlay.setOnClickListener {
             resetAudioHudTimer()
             isBackgroundPlayEnabled = !isBackgroundPlayEnabled
@@ -961,6 +972,10 @@ class MainActivity : AppCompatActivity() {
             LoopMode.ALL -> "LOOP: ALL"
         }
         btnAudioLoop.text = aText
+    }
+
+    private fun updateShuffleButtonUi() {
+        btnAudioShuffle.text = if (isAudioShuffleEnabled) "SHUFFLE: ON" else "SHUFFLE"
     }
 
     private fun updateBgPlayButtonUi() {
@@ -1097,14 +1112,26 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleRewind10Action() {
         if (currentScreen == Screen.VIDEO_PLAYER) {
-            val pos = (videoView.currentPosition - 10000).coerceAtLeast(0)
-            videoView.seekTo(pos)
+            val cur = videoView.currentPosition
+            val dur = videoView.duration
+            val target = (cur - 10000).coerceAtLeast(0)
+            videoView.seekTo(target)
+            if (dur > 0) {
+                sbVideoSeek.progress = ((target.toLong() * 1000L) / dur).toInt()
+            }
+            tvVideoTimeCurrent.text = formatTime(target)
             showVideoHud()
         } else if (currentScreen == Screen.AUDIO_PLAYER) {
             audioPlayer?.let { mp ->
                 try {
-                    val pos = (mp.currentPosition - 10000).coerceAtLeast(0)
-                    mp.seekTo(pos)
+                    val cur = mp.currentPosition
+                    val dur = mp.duration
+                    val target = (cur - 10000).coerceAtLeast(0)
+                    mp.seekTo(target)
+                    if (dur > 0) {
+                        progressAudioSeek.progress = ((target.toLong() * 1000L) / dur).toInt()
+                    }
+                    tvAudioTimeCurrent.text = formatTime(target)
                     showAudioHud()
                 } catch (_: Exception) {}
             }
@@ -1113,14 +1140,26 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleForward10Action() {
         if (currentScreen == Screen.VIDEO_PLAYER) {
-            val pos = (videoView.currentPosition + 10000).coerceAtMost(videoView.duration)
-            videoView.seekTo(pos)
+            val cur = videoView.currentPosition
+            val dur = videoView.duration
+            val target = if (dur > 0) (cur + 10000).coerceAtMost(dur) else cur + 10000
+            videoView.seekTo(target)
+            if (dur > 0) {
+                sbVideoSeek.progress = ((target.toLong() * 1000L) / dur).toInt()
+            }
+            tvVideoTimeCurrent.text = formatTime(target)
             showVideoHud()
         } else if (currentScreen == Screen.AUDIO_PLAYER) {
             audioPlayer?.let { mp ->
                 try {
-                    val pos = (mp.currentPosition + 10000).coerceAtMost(mp.duration)
-                    mp.seekTo(pos)
+                    val cur = mp.currentPosition
+                    val dur = mp.duration
+                    val target = if (dur > 0) (cur + 10000).coerceAtMost(dur) else cur + 10000
+                    mp.seekTo(target)
+                    if (dur > 0) {
+                        progressAudioSeek.progress = ((target.toLong() * 1000L) / dur).toInt()
+                    }
+                    tvAudioTimeCurrent.text = formatTime(target)
                     showAudioHud()
                 } catch (_: Exception) {}
             }
@@ -1135,7 +1174,13 @@ class MainActivity : AppCompatActivity() {
                 playVideoAtIndex(displayedVideoList.size - 1)
             }
         } else if (currentScreen == Screen.AUDIO_PLAYER) {
-            if (currentAudioIndex > 0) {
+            if (isAudioShuffleEnabled && displayedAudioList.size > 1) {
+                var nextIdx = kotlin.random.Random.nextInt(displayedAudioList.size)
+                if (nextIdx == currentAudioIndex) {
+                    nextIdx = (nextIdx + 1) % displayedAudioList.size
+                }
+                playAudioAtIndex(nextIdx)
+            } else if (currentAudioIndex > 0) {
                 playAudioAtIndex(currentAudioIndex - 1)
             } else if (audioLoopMode == LoopMode.ALL && displayedAudioList.isNotEmpty()) {
                 playAudioAtIndex(displayedAudioList.size - 1)
@@ -1151,7 +1196,13 @@ class MainActivity : AppCompatActivity() {
                 playVideoAtIndex(0)
             }
         } else if (currentScreen == Screen.AUDIO_PLAYER) {
-            if (currentAudioIndex < displayedAudioList.size - 1) {
+            if (isAudioShuffleEnabled && displayedAudioList.size > 1) {
+                var nextIdx = kotlin.random.Random.nextInt(displayedAudioList.size)
+                if (nextIdx == currentAudioIndex) {
+                    nextIdx = (nextIdx + 1) % displayedAudioList.size
+                }
+                playAudioAtIndex(nextIdx)
+            } else if (currentAudioIndex < displayedAudioList.size - 1) {
                 playAudioAtIndex(currentAudioIndex + 1)
             } else if (audioLoopMode == LoopMode.ALL && displayedAudioList.isNotEmpty()) {
                 playAudioAtIndex(0)
@@ -1654,10 +1705,17 @@ class MainActivity : AppCompatActivity() {
 
                         when (audioLoopMode) {
                             LoopMode.OFF -> {
-                                btnAudioPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play_arrow, 0, 0, 0)
-                                showAudioHud()
-                                if (currentAudioIndex < displayedAudioList.size - 1) {
+                                if (isAudioShuffleEnabled && displayedAudioList.size > 1) {
+                                    var nextIdx = kotlin.random.Random.nextInt(displayedAudioList.size)
+                                    if (nextIdx == currentAudioIndex) {
+                                        nextIdx = (nextIdx + 1) % displayedAudioList.size
+                                    }
+                                    playAudioAtIndex(nextIdx)
+                                } else if (currentAudioIndex < displayedAudioList.size - 1) {
                                     playAudioAtIndex(currentAudioIndex + 1)
+                                } else {
+                                    btnAudioPlayPause.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play_arrow, 0, 0, 0)
+                                    showAudioHud()
                                 }
                             }
                             LoopMode.SINGLE -> {
@@ -1666,8 +1724,16 @@ class MainActivity : AppCompatActivity() {
                                 audioEqualizerView.setPlaying(true)
                             }
                             LoopMode.ALL -> {
-                                val nextIdx = (currentAudioIndex + 1) % displayedAudioList.size
-                                playAudioAtIndex(nextIdx)
+                                if (isAudioShuffleEnabled && displayedAudioList.size > 1) {
+                                    var nextIdx = kotlin.random.Random.nextInt(displayedAudioList.size)
+                                    if (nextIdx == currentAudioIndex) {
+                                        nextIdx = (nextIdx + 1) % displayedAudioList.size
+                                    }
+                                    playAudioAtIndex(nextIdx)
+                                } else {
+                                    val nextIdx = (currentAudioIndex + 1) % displayedAudioList.size
+                                    playAudioAtIndex(nextIdx)
+                                }
                             }
                         }
                     }

@@ -199,7 +199,7 @@ class DirectVideoView @JvmOverloads constructor(
             }
 
             val player = ExoPlayer.Builder(context, renderersFactory)
-                .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                .setSeekParameters(SeekParameters.EXACT)
                 .build()
 
             this.exoPlayer = player
@@ -278,7 +278,7 @@ class DirectVideoView @JvmOverloads constructor(
             val dataSourceFactory = PtpMedia3DataSource.Factory(session)
             val extractorsFactory = DefaultExtractorsFactory()
                 .setConstantBitrateSeekingEnabled(true)
-                .setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
+                .setMp4ExtractorFlags(Mp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS)
 
             val extension = session.item.filename.substringAfterLast('.', "").lowercase()
             val mimeType = when (extension) {
@@ -432,9 +432,13 @@ class DirectVideoView @JvmOverloads constructor(
     }
 
     fun seekTo(msec: Int) {
+        val targetMs = msec.coerceAtLeast(0)
         try {
-            exoPlayer?.seekTo(msec.toLong())
-            nativeMediaPlayer?.seekTo(msec)
+            if (activeEngine == PlaybackEngine.EXOPLAYER) {
+                exoPlayer?.seekTo(targetMs.toLong())
+            } else {
+                nativeMediaPlayer?.seekTo(targetMs)
+            }
         } catch (e: Exception) {
             Log.w(PtpConstants.TAG, "seekTo() failed", e)
         }
