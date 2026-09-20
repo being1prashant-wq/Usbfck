@@ -183,6 +183,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnVideoQueue: Button
 
     private var videoProgressJob: Job? = null
+    private var currentVideoPlayer: MediaPlayer? = null
     private var currentVideoIndex = -1
     private var isVideoTracking = false
     private var currentPlaybackSpeed: Float = 1.0f
@@ -912,27 +913,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSubtitlesDialog() {
         try {
-            val subtitleTracks = videoView.getSubtitleTracks()
-            if (subtitleTracks.isEmpty()) {
+            val subTracks = videoView.getSubtitleTracks()
+            if (subTracks.size <= 1) {
                 Toast.makeText(this, "No subtitle tracks embedded in this video", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            val options = mutableListOf<Pair<com.example.media.MediaTrackOption?, String>>()
-            options.add(Pair(null, getString(R.string.subtitles_off)))
-            for (t in subtitleTracks) {
-                options.add(Pair(t, t.label))
-            }
+            val names = subTracks.map { track ->
+                val prefix = if (track.isSelected) "✓ " else "  "
+                "$prefix${track.label}"
+            }.toTypedArray()
 
-            val names = options.map { it.second }.toTypedArray()
-            val selectedIdx = options.indexOfFirst { it.first?.isSelected == true }.let { if (it < 0) 0 else it }
+            val selectedIdx = subTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)
 
             AlertDialog.Builder(this)
                 .setTitle(getString(R.string.subtitles_track))
                 .setSingleChoiceItems(names, selectedIdx) { dialog, which ->
-                    val chosen = options[which].first
-                    videoView.selectSubtitleTrack(chosen)
-                    btnVideoSubs.text = if (chosen == null) "💬 SUBS" else "💬 SUBS: ${chosen.label}"
+                    val chosen = subTracks[which]
+                    try {
+                        videoView.selectSubtitleTrack(chosen.index)
+                        btnVideoSubs.text = if (chosen.index == -1) "💬 SUBS" else "💬 ${chosen.label}"
+                    } catch (e: Exception) {
+                        Log.w(PtpConstants.TAG, "Subtitle track selection failed", e)
+                    }
                     dialog.dismiss()
                     btnVideoSubs.requestFocus()
                 }
@@ -953,23 +956,30 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (audioTracks.size == 1) {
-                val t = audioTracks[0]
-                val status = if (t.isSupported) "Supported" else "Unsupported on TV"
-                Toast.makeText(this, "Audio: ${t.label} ($status)", Toast.LENGTH_SHORT).show()
+                val track = audioTracks[0]
+                val desc = if (track.isAc3OrDolby) "Dolby Digital (${track.label})" else track.label
+                Toast.makeText(this, "Active stream: $desc", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            val names = audioTracks.map {
-                if (it.isSupported) it.label else "${it.label} [Unsupported on TV]"
+            val names = audioTracks.map { track ->
+                val prefix = if (track.isSelected) "✓ " else "  "
+                val ac3Tag = if (track.isAc3OrDolby) " [DOLBY/AC-3]" else ""
+                "$prefix${track.label}$ac3Tag"
             }.toTypedArray()
+
             val selectedIdx = audioTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)
 
             AlertDialog.Builder(this)
                 .setTitle(getString(R.string.audio_track))
                 .setSingleChoiceItems(names, selectedIdx) { dialog, which ->
-                    val chosen = audioTracks[which]
-                    videoView.selectAudioTrack(chosen)
-                    btnVideoAudioTrack.text = "🔊 ${chosen.label}"
+                    try {
+                        videoView.selectAudioTrack(which)
+                        val chosen = audioTracks[which]
+                        btnVideoAudioTrack.text = if (chosen.isAc3OrDolby) "🔊 DOLBY" else "🔊 ${chosen.language.ifBlank { "Track ${which + 1}" }}"
+                    } catch (e: Exception) {
+                        Log.w(PtpConstants.TAG, "Audio track switch failed", e)
+                    }
                     dialog.dismiss()
                     btnVideoAudioTrack.requestFocus()
                 }
@@ -1286,14 +1296,7 @@ class MainActivity : AppCompatActivity() {
         // Cancel previous session, jobs, and player immediately
         videoProgressJob?.cancel()
         videoPlaybackManager.closeCurrentSession()
-        try {
-            videoView.setOnPreparedListener(null)
-            videoView.setOnErrorListener(null)
-            videoView.setOnCompletionListener(null)
-            videoView.setOnBufferingListener(null)
-            videoView.setOnAudioFallbackNotice(null)
-            videoView.stopPlayback()
-        } catch (_: Exception) {}
+        videoView.stopPlayback()
 
         showScreen(Screen.VIDEO_PLAYER)
 
@@ -1306,8 +1309,8 @@ class MainActivity : AppCompatActivity() {
         tvVideoTimeTotal.text = "00:00"
         sbVideoSeek.progress = 0
         btnVideoPlayPause.text = "⏸ PAUSE"
-        btnVideoSubs.text = "💬 SUBS"
         btnVideoAudioTrack.text = "🔊 AUDIO"
+        btnVideoSubs.text = "💬 SUBS"
         currentPlaybackSpeed = 1.0f
         setPlaybackSpeed(1.0f)
         updateLoopButtonUi()
@@ -1332,7 +1335,7 @@ class MainActivity : AppCompatActivity() {
                             } else {
                                 tvBuffering.text = String.format("Buffering %.1f MB...", mb)
                             }
-                        } else if (videoView.isPlaying) {
+                        } else {
                             layoutVideoBuffering.visibility = View.GONE
                         }
                     }
@@ -1340,76 +1343,72 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        videoView.setOnPreparedListener {
-            if (sessionId != currentVideoSessionId) return@setOnPreparedListener
-            tvVideoError.visibility = View.GONE
-            tvVideoError.text = ""
-            layoutVideoBuffering.visibility = View.GONE
-
-            videoView.setLooping(videoLoopMode == LoopMode.SINGLE)
-            videoView.setPlaybackSpeed(currentPlaybackSpeed)
-            videoView.start()
-            btnVideoPlayPause.text = "⏸ PAUSE"
-
-            val duration = videoView.duration
-            if (duration > 0) {
-                tvVideoTimeTotal.text = formatTime(duration)
-            }
-
-            val audioTracks = videoView.getAudioTracks()
-            val selectedAudio = audioTracks.firstOrNull { it.isSelected } ?: audioTracks.firstOrNull()
-            if (selectedAudio != null) {
-                btnVideoAudioTrack.text = "🔊 ${selectedAudio.label}"
-            }
-
-            updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING, 0L)
-            startVideoProgressLoop(sessionId)
-            resetVideoHudTimer()
-        }
-
-        videoView.setOnBufferingListener { isBuffering ->
-            if (sessionId != currentVideoSessionId) return@setOnBufferingListener
-            if (isBuffering && !videoView.isPlaying) {
-                layoutVideoBuffering.visibility = View.VISIBLE
-            } else {
+        videoView.isLooping = (videoLoopMode == LoopMode.SINGLE)
+        videoView.onPreparedCallback = {
+            if (sessionId == currentVideoSessionId) {
+                tvVideoError.visibility = View.GONE
+                tvVideoError.text = ""
                 layoutVideoBuffering.visibility = View.GONE
+
+                videoView.setPlaybackSpeed(currentPlaybackSpeed)
+                videoView.start()
+                btnVideoPlayPause.text = "⏸ PAUSE"
+
+                val duration = videoView.duration
+                if (duration > 0) {
+                    tvVideoTimeTotal.text = formatTime(duration)
+                }
+
+                updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING, 0L)
+                startVideoProgressLoop(sessionId)
+                resetVideoHudTimer()
             }
         }
 
-        videoView.setOnAudioFallbackNotice { notice ->
-            if (sessionId != currentVideoSessionId) return@setOnAudioFallbackNotice
-            Toast.makeText(this, notice, Toast.LENGTH_LONG).show()
+        videoView.onAudioTracksUpdated = { audioTracks ->
+            if (sessionId == currentVideoSessionId) {
+                val hasAc3 = audioTracks.any { it.isAc3OrDolby }
+                val ext = item.filename.substringAfterLast('.', "VIDEO").uppercase()
+                if (hasAc3) {
+                    tvVideoBadgeFormat.text = "$ext • DOLBY AC-3"
+                    btnVideoAudioTrack.text = "🔊 DOLBY"
+                } else {
+                    tvVideoBadgeFormat.text = ext
+                }
+            }
         }
 
-        videoView.setOnErrorListener { error ->
-            if (sessionId != currentVideoSessionId) return@setOnErrorListener
-            Log.w(PtpConstants.TAG, "DirectVideoView playback error: ${error.message}")
-            layoutVideoBuffering.visibility = View.GONE
-            tvVideoError.text = getString(R.string.video_codec_unsupported)
-            tvVideoError.visibility = View.VISIBLE
-            showVideoHud()
-            btnVideoPlayPause.text = "▶ PLAY"
-            updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
+        videoView.onErrorCallback = { errorMsg ->
+            if (sessionId == currentVideoSessionId) {
+                Log.w(PtpConstants.TAG, "DirectVideoView playback error: $errorMsg")
+                layoutVideoBuffering.visibility = View.GONE
+                tvVideoError.text = getString(R.string.video_codec_unsupported)
+                tvVideoError.visibility = View.VISIBLE
+                showVideoHud()
+                btnVideoPlayPause.text = "▶ PLAY"
+                updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
+            }
         }
 
-        videoView.setOnCompletionListener {
-            if (sessionId != currentVideoSessionId) return@setOnCompletionListener
-            updateMediaSessionState(PlaybackStateCompat.STATE_STOPPED, videoView.duration.toLong())
-            when (videoLoopMode) {
-                LoopMode.OFF -> {
-                    btnVideoPlayPause.text = "▶ PLAY"
-                    showVideoHud()
-                    if (currentVideoIndex < displayedVideoList.size - 1) {
-                        playVideoAtIndex(currentVideoIndex + 1)
+        videoView.onCompletionCallback = {
+            if (sessionId == currentVideoSessionId) {
+                updateMediaSessionState(PlaybackStateCompat.STATE_STOPPED, videoView.duration.toLong())
+                when (videoLoopMode) {
+                    LoopMode.OFF -> {
+                        btnVideoPlayPause.text = "▶ PLAY"
+                        showVideoHud()
+                        if (currentVideoIndex < displayedVideoList.size - 1) {
+                            playVideoAtIndex(currentVideoIndex + 1)
+                        }
                     }
-                }
-                LoopMode.SINGLE -> {
-                    videoView.seekTo(0)
-                    videoView.start()
-                }
-                LoopMode.ALL -> {
-                    val nextIdx = (currentVideoIndex + 1) % displayedVideoList.size
-                    playVideoAtIndex(nextIdx)
+                    LoopMode.SINGLE -> {
+                        videoView.seekTo(0)
+                        videoView.start()
+                    }
+                    LoopMode.ALL -> {
+                        val nextIdx = (currentVideoIndex + 1) % displayedVideoList.size
+                        playVideoAtIndex(nextIdx)
+                    }
                 }
             }
         }
@@ -1417,7 +1416,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             session.prewarmInitialChunk()
             if (sessionId == currentVideoSessionId) {
-                videoView.setSession(session)
+                videoView.setPlaybackSession(session)
             }
         }
     }
@@ -1451,14 +1450,7 @@ class MainActivity : AppCompatActivity() {
         hudHandler.removeCallbacks(hideVideoHudRunnable)
         videoProgressJob?.cancel()
         videoPlaybackManager.closeCurrentSession()
-        try {
-            videoView.setOnPreparedListener(null)
-            videoView.setOnErrorListener(null)
-            videoView.setOnCompletionListener(null)
-            videoView.setOnBufferingListener(null)
-            videoView.setOnAudioFallbackNotice(null)
-            videoView.stopPlayback()
-        } catch (_: Exception) {}
+        videoView.stopPlayback()
         layoutVideoBuffering.visibility = View.GONE
         tvVideoError.visibility = View.GONE
         tvVideoError.text = ""

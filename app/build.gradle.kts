@@ -79,13 +79,12 @@ dependencies {
   implementation(libs.androidx.appcompat)
   implementation(libs.androidx.recyclerview)
   implementation(libs.androidx.media)
-  implementation(libs.kotlinx.coroutines.android)
-  implementation(libs.kotlinx.coroutines.core)
-
   implementation(libs.media3.exoplayer)
   implementation(libs.media3.ui)
   implementation(libs.media3.datasource)
   implementation(libs.media3.session)
+  implementation(libs.kotlinx.coroutines.android)
+  implementation(libs.kotlinx.coroutines.core)
 
   testImplementation(libs.junit)
   testImplementation(libs.androidx.junit)
