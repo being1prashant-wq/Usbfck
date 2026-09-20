@@ -1,24 +1,43 @@
 package com.example.media
 
 import android.content.Context
-import android.media.AudioManager
 import android.media.MediaDataSource
-import android.media.MediaPlayer
-import android.media.PlaybackParams
-import android.os.Build
+import android.net.Uri
 import android.util.AttributeSet
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.VideoSize
+import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.extractor.DefaultExtractorsFactory
+
+data class MediaTrackOption(
+    val groupIndex: Int,
+    val trackIndex: Int,
+    val label: String,
+    val language: String,
+    val mimeType: String,
+    val isSelected: Boolean,
+    val isSupported: Boolean
+)
 
 /**
- * A custom video display view that uses SurfaceView and Android MediaPlayer
- * with full support for custom [MediaDataSource] (read-through seekable PTP streaming)
- * and seamless AC-3 / Dolby Digital audio decoding engine for Android TV.
- * Preserves the exact video aspect ratio on TV and mobile displays.
+ * High-performance video display view using SurfaceView and Media3 ExoPlayer.
+ * Features:
+ * - Native hardware decoding for 10-bit HEVC/H.264/VP9/AV1 where supported by TV SoC.
+ * - Software demuxing for MKV, MP4, WebM, AVI, TS containers via DefaultExtractorsFactory.
+ * - Robust audio/video stream separation: if AC3/EAC3 or other audio codec is not decodable
+ *   on the TV hardware, audio track is isolated/disabled so the VIDEO STREAM PLAYS SMOOTHLY.
+ * - Safe session isolation: opening/closing videos releases decoders and prevents state contamination.
+ * - Preserves exact aspect ratio on TV displays.
  */
 class DirectVideoView @JvmOverloads constructor(
     context: Context,
@@ -26,24 +45,24 @@ class DirectVideoView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : SurfaceView(context, attrs, defStyleAttr), SurfaceHolder.Callback {
 
-    private var mediaPlayer: MediaPlayer? = null
-    private var currentDataSource: MediaDataSource? = null
+    companion object {
+        private const val TAG = "DirectVideoView"
+    }
+
+    private var exoPlayer: ExoPlayer? = null
+    private var trackSelector: DefaultTrackSelector? = null
     private var isPrepared = false
     private var isSurfaceCreated = false
+    private var isAudioTrackDisabled = false
 
     private var videoWidth = 0
     private var videoHeight = 0
 
-    private var onPreparedListener: MediaPlayer.OnPreparedListener? = null
-    private var onErrorListener: MediaPlayer.OnErrorListener? = null
-    private var onCompletionListener: MediaPlayer.OnCompletionListener? = null
-    private var onInfoListener: MediaPlayer.OnInfoListener? = null
-
-    private val playerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val ac3Engine = Ac3AudioEngine(context, playerScope)
-
-    private var detectedAudioTracks: List<AudioTrackDescriptor> = emptyList()
-    private var currentActiveAudioTrack: AudioTrackDescriptor? = null
+    private var onPreparedListener: (() -> Unit)? = null
+    private var onErrorListener: ((PlaybackException) -> Unit)? = null
+    private var onCompletionListener: (() -> Unit)? = null
+    private var onBufferingListener: ((Boolean) -> Unit)? = null
+    private var onAudioFallbackNotice: ((String) -> Unit)? = null
 
     init {
         holder.addCallback(this)
@@ -52,9 +71,9 @@ class DirectVideoView @JvmOverloads constructor(
     override fun surfaceCreated(holder: SurfaceHolder) {
         isSurfaceCreated = true
         try {
-            mediaPlayer?.setDisplay(holder)
+            exoPlayer?.setVideoSurfaceHolder(holder)
         } catch (e: Exception) {
-            Log.w("DirectVideoView", "Error setting display on surfaceCreated", e)
+            Log.w(TAG, "Error setting video surface holder on surfaceCreated", e)
         }
     }
 
@@ -65,245 +84,411 @@ class DirectVideoView @JvmOverloads constructor(
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         isSurfaceCreated = false
         try {
-            mediaPlayer?.setDisplay(null)
+            exoPlayer?.clearVideoSurfaceHolder(holder)
         } catch (_: Exception) {}
     }
 
-    fun setDataSource(dataSource: MediaDataSource) {
+    fun setSession(session: PtpPlaybackSession) {
         stopPlayback()
-        this.currentDataSource = dataSource
+        isAudioTrackDisabled = false
 
         try {
-            // Inspect tracks using MediaExtractor
-            detectedAudioTracks = ac3Engine.inspectTracks(dataSource)
-            Log.i("DirectVideoView", "Detected ${detectedAudioTracks.size} audio tracks for video")
+            val ts = DefaultTrackSelector(context).apply {
+                setParameters(
+                    buildUponParameters()
+                        .setAllowAudioMixedMimeTypeAdaptiveness(true)
+                        .setAllowAudioMixedSampleRateAdaptiveness(true)
+                        .setAllowMultipleAdaptiveSelections(true)
+                )
+            }
+            this.trackSelector = ts
 
-            val mp = MediaPlayer()
-            this.mediaPlayer = mp
-            mp.setAudioStreamType(AudioManager.STREAM_MUSIC)
-            mp.setScreenOnWhilePlaying(true)
+            val renderersFactory = DefaultRenderersFactory(context).apply {
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+                setEnableDecoderFallback(true)
+            }
+
+            val player = ExoPlayer.Builder(context, renderersFactory)
+                .setTrackSelector(ts)
+                .build()
+
+            this.exoPlayer = player
 
             if (isSurfaceCreated && holder.surface.isValid) {
-                mp.setDisplay(holder)
+                player.setVideoSurfaceHolder(holder)
             }
 
-            mp.setOnVideoSizeChangedListener { _, width, height ->
-                if (width > 0 && height > 0) {
-                    videoWidth = width
-                    videoHeight = height
-                    holder.setFixedSize(width, height)
-                    requestLayout()
-                }
-            }
-
-            mp.setOnPreparedListener { player ->
-                isPrepared = true
-                val w = player.videoWidth
-                val h = player.videoHeight
-                if (w > 0 && h > 0) {
-                    videoWidth = w
-                    videoHeight = h
-                    holder.setFixedSize(w, h)
-                    requestLayout()
+            player.addListener(object : Player.Listener {
+                override fun onVideoSizeChanged(videoSize: VideoSize) {
+                    if (videoSize.width > 0 && videoSize.height > 0) {
+                        videoWidth = videoSize.width
+                        videoHeight = videoSize.height
+                        holder.setFixedSize(videoWidth, videoHeight)
+                        requestLayout()
+                    }
                 }
 
-                // Automatic AC-3 track handling
-                handleInitialAudioTrackSetup(dataSource, player)
+                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                    // Check if audio tracks are present and if all are unsupported by TV
+                    if (!isAudioTrackDisabled) {
+                        var hasAudio = false
+                        var hasSupportedAudio = false
+                        for (group in tracks.groups) {
+                            if (group.type == C.TRACK_TYPE_AUDIO) {
+                                hasAudio = true
+                                for (i in 0 until group.length) {
+                                    if (group.isTrackSupported(i)) {
+                                        hasSupportedAudio = true
+                                        break
+                                    }
+                                }
+                            }
+                        }
 
-                onPreparedListener?.onPrepared(player)
-            }
+                        // If audio is present but completely unsupported on this TV (e.g. AC3 without HW decoder)
+                        if (hasAudio && !hasSupportedAudio) {
+                            Log.w(TAG, "All audio tracks unsupported on this TV; disabling audio track so video plays normally")
+                            isAudioTrackDisabled = true
+                            ts.setParameters(
+                                ts.buildUponParameters()
+                                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                            )
+                            onAudioFallbackNotice?.invoke("Audio codec not supported by this TV (playing video)")
+                        }
+                    }
+                }
 
-            mp.setOnErrorListener { player, what, extra ->
-                isPrepared = false
-                onErrorListener?.onError(player, what, extra) ?: false
-            }
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    when (playbackState) {
+                        Player.STATE_READY -> {
+                            onBufferingListener?.invoke(false)
+                            if (!isPrepared) {
+                                isPrepared = true
+                                val size = player.videoSize
+                                if (size.width > 0 && size.height > 0) {
+                                    videoWidth = size.width
+                                    videoHeight = size.height
+                                    holder.setFixedSize(videoWidth, videoHeight)
+                                    requestLayout()
+                                }
+                                onPreparedListener?.invoke()
+                            }
+                        }
+                        Player.STATE_ENDED -> {
+                            onCompletionListener?.invoke()
+                        }
+                        Player.STATE_BUFFERING -> {
+                            onBufferingListener?.invoke(true)
+                        }
+                        Player.STATE_IDLE -> {
+                            // Player idle
+                        }
+                    }
+                }
 
-            mp.setOnCompletionListener { player ->
-                ac3Engine.stopPlayback()
-                onCompletionListener?.onCompletion(player)
-            }
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (isPlaying) {
+                        onBufferingListener?.invoke(false)
+                    }
+                }
 
-            mp.setOnInfoListener { player, what, extra ->
-                onInfoListener?.onInfo(player, what, extra) ?: false
-            }
+                override fun onPlayerError(error: PlaybackException) {
+                    Log.w(TAG, "ExoPlayer onPlayerError: ${error.errorCodeName} (${error.errorCode})", error)
+                    
+                    // Check if the error is audio-related (e.g. AC3/EAC3 decoder failure)
+                    val isAudioError = isAudioDecoderOrRendererError(error)
+                    val selector = trackSelector
+                    if (isAudioError && !isAudioTrackDisabled && selector != null) {
+                        Log.w(TAG, "Audio decoder failed on this TV; disabling audio track and resuming video playback")
+                        isAudioTrackDisabled = true
+                        selector.setParameters(
+                            selector.buildUponParameters()
+                                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                        )
+                        player.prepare()
+                        player.play()
+                        onAudioFallbackNotice?.invoke("Audio track not supported by this TV (video playing)")
+                        return
+                    }
 
-            mp.setDataSource(dataSource)
-            mp.prepareAsync()
+                    isPrepared = false
+                    onErrorListener?.invoke(error)
+                }
+            })
+
+            val dataSourceFactory = PtpExoDataSource.Factory(session)
+            val extractorsFactory = DefaultExtractorsFactory()
+                .setConstantBitrateSeekingEnabled(true)
+
+            val mediaItem = androidx.media3.common.MediaItem.Builder()
+                .setUri(Uri.parse("ptp://video/${session.sessionId}/${session.item.handle}"))
+                .build()
+
+            val mediaSource = ProgressiveMediaSource.Factory(
+                dataSourceFactory,
+                extractorsFactory
+            ).createMediaSource(mediaItem)
+
+            player.setMediaSource(mediaSource)
+            player.prepare()
         } catch (e: Exception) {
-            Log.e("DirectVideoView", "Failed to setDataSource", e)
-            onErrorListener?.onError(mediaPlayer, MediaPlayer.MEDIA_ERROR_UNKNOWN, -1)
-        }
-    }
-
-    private fun handleInitialAudioTrackSetup(dataSource: MediaDataSource, player: MediaPlayer) {
-        if (detectedAudioTracks.isEmpty()) return
-
-        // Prefer first AC-3 track if available, or first track
-        val firstAc3 = detectedAudioTracks.firstOrNull { it.isAc3 }
-        if (firstAc3 != null) {
-            selectAudioTrack(firstAc3)
-        } else {
-            currentActiveAudioTrack = detectedAudioTracks.firstOrNull()
-            try { player.setVolume(1.0f, 1.0f) } catch (_: Exception) {}
-        }
-    }
-
-    fun getAudioTracks(): List<AudioTrackDescriptor> = detectedAudioTracks
-
-    fun getActiveAudioTrack(): AudioTrackDescriptor? = currentActiveAudioTrack
-
-    fun getActiveAudioTrackIndex(): Int = currentActiveAudioTrack?.trackIndex ?: -1
-
-    fun selectAudioTrack(descriptor: AudioTrackDescriptor) {
-        currentActiveAudioTrack = descriptor
-        val mp = mediaPlayer
-        val ds = currentDataSource ?: return
-
-        if (descriptor.isAc3) {
-            // Mute native player to prevent static/silence conflicts
-            try { mp?.setVolume(0.0f, 0.0f) } catch (_: Exception) {}
-
-            ac3Engine.startAc3Playback(
-                dataSource = ds,
-                trackIndex = descriptor.trackIndex,
-                positionProvider = { currentPosition.toLong() },
-                isPlayingProvider = { isPlaying }
+            Log.e(TAG, "Failed to initialize ExoPlayer for session ${session.sessionId}", e)
+            onErrorListener?.invoke(
+                PlaybackException("Initialization error", e, PlaybackException.ERROR_CODE_UNSPECIFIED)
             )
+        }
+    }
+
+    /**
+     * Fallback overload if MediaDataSource is passed.
+     */
+    fun setDataSource(dataSource: MediaDataSource) {
+        if (dataSource is PtpVideoDataSource) {
+            setSession(dataSource.session)
         } else {
-            // Unmute native player and route standard track
-            ac3Engine.stopPlayback()
-            try {
-                mp?.setVolume(1.0f, 1.0f)
-                mp?.selectTrack(descriptor.trackIndex)
-            } catch (e: Exception) {
-                Log.w("DirectVideoView", "Native track switch error: ${e.message}")
+            Log.e(TAG, "Unsupported MediaDataSource type: ${dataSource.javaClass.name}")
+        }
+    }
+
+    private fun isAudioDecoderOrRendererError(error: PlaybackException): Boolean {
+        if (error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
+        ) {
+            var cause: Throwable? = error.cause
+            while (cause != null) {
+                val msg = cause.message?.lowercase() ?: ""
+                if (msg.contains("audio") || msg.contains("ac3") || msg.contains("eac3") ||
+                    msg.contains("dts") || msg.contains("audiotrack")
+                ) {
+                    return true
+                }
+                if (cause is androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException) {
+                    if (cause.mimeType?.startsWith("audio/") == true) {
+                        return true
+                    }
+                }
+                if (cause is androidx.media3.exoplayer.mediacodec.MediaCodecUtil.DecoderQueryException) {
+                    return true
+                }
+                if (cause is androidx.media3.exoplayer.audio.AudioSink.InitializationException ||
+                    cause is androidx.media3.exoplayer.audio.AudioSink.WriteException ||
+                    cause is androidx.media3.exoplayer.audio.AudioSink.ConfigurationException
+                ) {
+                    return true
+                }
+                cause = cause.cause
             }
         }
+
+        val errMessage = error.message?.lowercase() ?: ""
+        if (errMessage.contains("audio") || errMessage.contains("ac3") ||
+            errMessage.contains("eac3") || errMessage.contains("dts")
+        ) {
+            return true
+        }
+
+        return false
     }
 
     fun start() {
         try {
-            if (isPrepared) {
-                mediaPlayer?.start()
-                if (currentActiveAudioTrack?.isAc3 == true) {
-                    ac3Engine.resume()
-                }
-            }
+            exoPlayer?.play()
         } catch (e: Exception) {
-            Log.w("DirectVideoView", "start() failed", e)
+            Log.w(TAG, "start() failed", e)
         }
     }
 
     fun pause() {
         try {
-            if (isPrepared && mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.pause()
-                if (currentActiveAudioTrack?.isAc3 == true) {
-                    ac3Engine.pause()
-                }
-            }
+            exoPlayer?.pause()
         } catch (e: Exception) {
-            Log.w("DirectVideoView", "pause() failed", e)
+            Log.w(TAG, "pause() failed", e)
         }
     }
 
     fun seekTo(msec: Int) {
         try {
-            if (isPrepared) {
-                mediaPlayer?.seekTo(msec)
-                if (currentActiveAudioTrack?.isAc3 == true) {
-                    ac3Engine.seekTo(msec.toLong())
-                }
-            }
+            exoPlayer?.seekTo(msec.toLong().coerceAtLeast(0L))
         } catch (e: Exception) {
-            Log.w("DirectVideoView", "seekTo() failed", e)
-        }
-    }
-
-    fun setPlaybackSpeed(speed: Float) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                mediaPlayer?.let { mp ->
-                    val params = mp.playbackParams
-                    params.speed = speed
-                    mp.playbackParams = params
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("DirectVideoView", "Failed to set playback speed: $speed", e)
+            Log.w(TAG, "seekTo() failed", e)
         }
     }
 
     val isPlaying: Boolean
         get() = try {
-            isPrepared && mediaPlayer?.isPlaying == true
+            exoPlayer?.isPlaying == true
         } catch (_: Exception) {
             false
         }
 
     val duration: Int
         get() = try {
-            if (isPrepared) mediaPlayer?.duration ?: 0 else 0
+            val d = exoPlayer?.duration ?: 0L
+            if (d > 0 && d != C.TIME_UNSET) d.toInt() else 0
         } catch (_: Exception) {
             0
         }
 
     val currentPosition: Int
         get() = try {
-            if (isPrepared) mediaPlayer?.currentPosition ?: 0 else 0
+            val p = exoPlayer?.currentPosition ?: 0L
+            if (p >= 0 && p != C.TIME_UNSET) p.toInt() else 0
         } catch (_: Exception) {
             0
         }
 
-    fun getMediaPlayer(): MediaPlayer? = mediaPlayer
+    fun setPlaybackSpeed(speed: Float) {
+        try {
+            exoPlayer?.setPlaybackSpeed(speed)
+        } catch (e: Exception) {
+            Log.w(TAG, "setPlaybackSpeed failed", e)
+        }
+    }
 
-    fun setOnPreparedListener(l: MediaPlayer.OnPreparedListener?) {
+    fun setLooping(isLooping: Boolean) {
+        try {
+            exoPlayer?.repeatMode = if (isLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        } catch (_: Exception) {}
+    }
+
+    fun getAudioTracks(): List<MediaTrackOption> {
+        val player = exoPlayer ?: return emptyList()
+        val tracks = player.currentTracks
+        val list = mutableListOf<MediaTrackOption>()
+
+        var audioCounter = 1
+        for (groupIndex in 0 until tracks.groups.size) {
+            val group = tracks.groups[groupIndex]
+            if (group.type == C.TRACK_TYPE_AUDIO) {
+                for (trackIndex in 0 until group.length) {
+                    val format = group.getTrackFormat(trackIndex)
+                    val lang = format.language?.takeIf { it.isNotBlank() } ?: "Track $audioCounter"
+                    val codec = format.sampleMimeType?.substringAfterLast('/')?.uppercase() ?: ""
+                    val channels = if (format.channelCount > 0) "${format.channelCount}ch" else ""
+                    val details = listOf(lang, codec, channels).filter { it.isNotBlank() }.joinToString(" • ")
+
+                    list.add(
+                        MediaTrackOption(
+                            groupIndex = groupIndex,
+                            trackIndex = trackIndex,
+                            label = details,
+                            language = format.language ?: "",
+                            mimeType = format.sampleMimeType ?: "",
+                            isSelected = group.isTrackSelected(trackIndex),
+                            isSupported = group.isTrackSupported(trackIndex)
+                        )
+                    )
+                    audioCounter++
+                }
+            }
+        }
+        return list
+    }
+
+    fun selectAudioTrack(option: MediaTrackOption) {
+        val player = exoPlayer ?: return
+        val ts = trackSelector ?: return
+        val tracks = player.currentTracks
+        if (option.groupIndex in 0 until tracks.groups.size) {
+            val group = tracks.groups[option.groupIndex]
+            ts.setParameters(
+                ts.buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
+            )
+        }
+    }
+
+    fun getSubtitleTracks(): List<MediaTrackOption> {
+        val player = exoPlayer ?: return emptyList()
+        val tracks = player.currentTracks
+        val list = mutableListOf<MediaTrackOption>()
+
+        var subCounter = 1
+        for (groupIndex in 0 until tracks.groups.size) {
+            val group = tracks.groups[groupIndex]
+            if (group.type == C.TRACK_TYPE_TEXT) {
+                for (trackIndex in 0 until group.length) {
+                    val format = group.getTrackFormat(trackIndex)
+                    val lang = format.language?.takeIf { it.isNotBlank() } ?: "Track $subCounter"
+                    val label = format.label?.takeIf { it.isNotBlank() } ?: lang
+
+                    list.add(
+                        MediaTrackOption(
+                            groupIndex = groupIndex,
+                            trackIndex = trackIndex,
+                            label = label,
+                            language = format.language ?: "",
+                            mimeType = format.sampleMimeType ?: "",
+                            isSelected = group.isTrackSelected(trackIndex),
+                            isSupported = group.isTrackSupported(trackIndex)
+                        )
+                    )
+                    subCounter++
+                }
+            }
+        }
+        return list
+    }
+
+    fun selectSubtitleTrack(option: MediaTrackOption?) {
+        val player = exoPlayer ?: return
+        val ts = trackSelector ?: return
+        if (option == null) {
+            ts.setParameters(
+                ts.buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            )
+        } else {
+            val tracks = player.currentTracks
+            if (option.groupIndex in 0 until tracks.groups.size) {
+                val group = tracks.groups[option.groupIndex]
+                ts.setParameters(
+                    ts.buildUponParameters()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
+                )
+            }
+        }
+    }
+
+    fun setOnPreparedListener(l: (() -> Unit)?) {
         onPreparedListener = l
     }
 
-    fun setOnErrorListener(l: MediaPlayer.OnErrorListener?) {
+    fun setOnErrorListener(l: ((PlaybackException) -> Unit)?) {
         onErrorListener = l
     }
 
-    fun setOnCompletionListener(l: MediaPlayer.OnCompletionListener?) {
+    fun setOnCompletionListener(l: (() -> Unit)?) {
         onCompletionListener = l
     }
 
-    fun setOnInfoListener(l: MediaPlayer.OnInfoListener?) {
-        onInfoListener = l
+    fun setOnBufferingListener(l: ((Boolean) -> Unit)?) {
+        onBufferingListener = l
+    }
+
+    fun setOnAudioFallbackNotice(l: ((String) -> Unit)?) {
+        onAudioFallbackNotice = l
     }
 
     fun stopPlayback() {
-        ac3Engine.stopPlayback()
         try {
-            mediaPlayer?.let { mp ->
-                mp.setOnPreparedListener(null)
-                mp.setOnErrorListener(null)
-                mp.setOnCompletionListener(null)
-                mp.setOnInfoListener(null)
-                mp.setOnVideoSizeChangedListener(null)
-                try {
-                    if (mp.isPlaying) {
-                        mp.stop()
-                    }
-                } catch (_: Exception) {}
-                try { mp.reset() } catch (_: Exception) {}
-                try { mp.release() } catch (_: Exception) {}
-            }
+            exoPlayer?.stop()
+            exoPlayer?.clearMediaItems()
+            exoPlayer?.release()
         } catch (e: Exception) {
-            Log.w("DirectVideoView", "Error releasing MediaPlayer", e)
+            Log.w(TAG, "Error releasing ExoPlayer", e)
         }
-        mediaPlayer = null
+        exoPlayer = null
+        trackSelector = null
         isPrepared = false
+        isAudioTrackDisabled = false
         videoWidth = 0
         videoHeight = 0
-        detectedAudioTracks = emptyList()
-        currentActiveAudioTrack = null
-
-        try {
-            currentDataSource?.close()
-        } catch (_: Exception) {}
-        currentDataSource = null
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -351,4 +536,3 @@ class DirectVideoView @JvmOverloads constructor(
         setMeasuredDimension(width, height)
     }
 }
-

@@ -183,7 +183,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnVideoQueue: Button
 
     private var videoProgressJob: Job? = null
-    private var currentVideoPlayer: MediaPlayer? = null
     private var currentVideoIndex = -1
     private var isVideoTracking = false
     private var currentPlaybackSpeed: Float = 1.0f
@@ -760,18 +759,7 @@ class MainActivity : AppCompatActivity() {
         val label = "${speed}x"
         btnVideoSpeed.text = "⚡ $label"
         tvVideoHudSpeed.text = label
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                currentVideoPlayer?.let { mp ->
-                    val params = mp.playbackParams
-                    params.speed = speed
-                    mp.playbackParams = params
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(PtpConstants.TAG, "Could not set playback speed: $speed", e)
-        }
+        videoView.setPlaybackSpeed(speed)
     }
 
     private fun setupAudioControls() {
@@ -923,54 +911,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSubtitlesDialog() {
-        val mp = currentVideoPlayer
-        if (mp == null) {
-            Toast.makeText(this, "Subtitles not available", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         try {
-            val trackInfo = mp.trackInfo
-            val subtitleTracks = mutableListOf<Pair<Int, String>>()
-            subtitleTracks.add(Pair(-1, getString(R.string.subtitles_off)))
-
-            var subCounter = 1
-            for (i in trackInfo.indices) {
-                if (trackInfo[i].trackType == MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_TIMEDTEXT ||
-                    trackInfo[i].trackType == MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_SUBTITLE
-                ) {
-                    val lang = trackInfo[i].language.ifBlank { "Track $subCounter" }
-                    subtitleTracks.add(Pair(i, lang))
-                    subCounter++
-                }
-            }
-
-            if (subtitleTracks.size == 1) {
+            val subtitleTracks = videoView.getSubtitleTracks()
+            if (subtitleTracks.isEmpty()) {
                 Toast.makeText(this, "No subtitle tracks embedded in this video", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            val names = subtitleTracks.map { it.second }.toTypedArray()
-            val selectedIdx = subtitleTracks.indexOfFirst { it.first == currentSubtitlesTrack }.coerceAtLeast(0)
+            val options = mutableListOf<Pair<com.example.media.MediaTrackOption?, String>>()
+            options.add(Pair(null, getString(R.string.subtitles_off)))
+            for (t in subtitleTracks) {
+                options.add(Pair(t, t.label))
+            }
+
+            val names = options.map { it.second }.toTypedArray()
+            val selectedIdx = options.indexOfFirst { it.first?.isSelected == true }.let { if (it < 0) 0 else it }
 
             AlertDialog.Builder(this)
                 .setTitle(getString(R.string.subtitles_track))
                 .setSingleChoiceItems(names, selectedIdx) { dialog, which ->
-                    val chosen = subtitleTracks[which].first
-                    currentSubtitlesTrack = chosen
-                    try {
-                        if (chosen == -1) {
-                            for (p in subtitleTracks) {
-                                if (p.first != -1) mp.deselectTrack(p.first)
-                            }
-                            btnVideoSubs.text = "💬 SUBS"
-                        } else {
-                            mp.selectTrack(chosen)
-                            btnVideoSubs.text = "💬 SUBS: ${subtitleTracks[which].second}"
-                        }
-                    } catch (e: Exception) {
-                        Log.w(PtpConstants.TAG, "Subtitle track selection failed", e)
-                    }
+                    val chosen = options[which].first
+                    videoView.selectSubtitleTrack(chosen)
+                    btnVideoSubs.text = if (chosen == null) "💬 SUBS" else "💬 SUBS: ${chosen.label}"
                     dialog.dismiss()
                     btnVideoSubs.requestFocus()
                 }
@@ -983,39 +945,40 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAudioTrackDialog() {
-        val tracks = videoView.getAudioTracks()
-        if (tracks.isEmpty()) {
-            Toast.makeText(this, "Audio tracks not available", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (tracks.size == 1) {
-            val t = tracks[0]
-            val desc = t.userDisplayName
-            Toast.makeText(this, "Active audio track: $desc", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val names = tracks.map { it.userDisplayName }.toTypedArray()
-        val currentActiveIdx = videoView.getActiveAudioTrackIndex()
-        val selectedIndex = tracks.indexOfFirst { it.trackIndex == currentActiveIdx }.coerceAtLeast(0)
-
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.audio_track))
-            .setSingleChoiceItems(names, selectedIndex) { dialog, which ->
-                try {
-                    val chosen = tracks[which]
-                    videoView.selectAudioTrack(chosen)
-                    btnVideoAudioTrack.text = "🔊 ${chosen.codecDisplayName}"
-                } catch (e: Exception) {
-                    Log.w(PtpConstants.TAG, "Audio track switch failed", e)
-                }
-                dialog.dismiss()
-                btnVideoAudioTrack.requestFocus()
+        try {
+            val audioTracks = videoView.getAudioTracks()
+            if (audioTracks.isEmpty()) {
+                Toast.makeText(this, "Audio tracks not available", Toast.LENGTH_SHORT).show()
+                return
             }
-            .setOnDismissListener { btnVideoAudioTrack.requestFocus() }
-            .setNegativeButton("CANCEL", null)
-            .show()
+
+            if (audioTracks.size == 1) {
+                val t = audioTracks[0]
+                val status = if (t.isSupported) "Supported" else "Unsupported on TV"
+                Toast.makeText(this, "Audio: ${t.label} ($status)", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val names = audioTracks.map {
+                if (it.isSupported) it.label else "${it.label} [Unsupported on TV]"
+            }.toTypedArray()
+            val selectedIdx = audioTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)
+
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.audio_track))
+                .setSingleChoiceItems(names, selectedIdx) { dialog, which ->
+                    val chosen = audioTracks[which]
+                    videoView.selectAudioTrack(chosen)
+                    btnVideoAudioTrack.text = "🔊 ${chosen.label}"
+                    dialog.dismiss()
+                    btnVideoAudioTrack.requestFocus()
+                }
+                .setOnDismissListener { btnVideoAudioTrack.requestFocus() }
+                .setNegativeButton("CANCEL", null)
+                .show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Audio tracks query not supported", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun handlePlayPauseAction() {
@@ -1327,9 +1290,10 @@ class MainActivity : AppCompatActivity() {
             videoView.setOnPreparedListener(null)
             videoView.setOnErrorListener(null)
             videoView.setOnCompletionListener(null)
+            videoView.setOnBufferingListener(null)
+            videoView.setOnAudioFallbackNotice(null)
             videoView.stopPlayback()
         } catch (_: Exception) {}
-        currentVideoPlayer = null
 
         showScreen(Screen.VIDEO_PLAYER)
 
@@ -1342,6 +1306,8 @@ class MainActivity : AppCompatActivity() {
         tvVideoTimeTotal.text = "00:00"
         sbVideoSeek.progress = 0
         btnVideoPlayPause.text = "⏸ PAUSE"
+        btnVideoSubs.text = "💬 SUBS"
+        btnVideoAudioTrack.text = "🔊 AUDIO"
         currentPlaybackSpeed = 1.0f
         setPlaybackSpeed(1.0f)
         updateLoopButtonUi()
@@ -1366,7 +1332,7 @@ class MainActivity : AppCompatActivity() {
                             } else {
                                 tvBuffering.text = String.format("Buffering %.1f MB...", mb)
                             }
-                        } else {
+                        } else if (videoView.isPlaying) {
                             layoutVideoBuffering.visibility = View.GONE
                         }
                     }
@@ -1374,23 +1340,14 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        videoView.setOnPreparedListener { mp ->
+        videoView.setOnPreparedListener {
             if (sessionId != currentVideoSessionId) return@setOnPreparedListener
-            currentVideoPlayer = mp
             tvVideoError.visibility = View.GONE
             tvVideoError.text = ""
             layoutVideoBuffering.visibility = View.GONE
 
-            mp.isLooping = (videoLoopMode == LoopMode.SINGLE)
-            setPlaybackSpeed(currentPlaybackSpeed)
-
-            val activeTrack = videoView.getActiveAudioTrack()
-            if (activeTrack != null) {
-                btnVideoAudioTrack.text = "🔊 ${activeTrack.codecDisplayName}"
-            } else {
-                btnVideoAudioTrack.text = "🔊 AUDIO"
-            }
-
+            videoView.setLooping(videoLoopMode == LoopMode.SINGLE)
+            videoView.setPlaybackSpeed(currentPlaybackSpeed)
             videoView.start()
             btnVideoPlayPause.text = "⏸ PAUSE"
 
@@ -1399,23 +1356,40 @@ class MainActivity : AppCompatActivity() {
                 tvVideoTimeTotal.text = formatTime(duration)
             }
 
+            val audioTracks = videoView.getAudioTracks()
+            val selectedAudio = audioTracks.firstOrNull { it.isSelected } ?: audioTracks.firstOrNull()
+            if (selectedAudio != null) {
+                btnVideoAudioTrack.text = "🔊 ${selectedAudio.label}"
+            }
+
             updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING, 0L)
             startVideoProgressLoop(sessionId)
             resetVideoHudTimer()
         }
 
-        videoView.setOnErrorListener { _, what, extra ->
-            if (sessionId != currentVideoSessionId) return@setOnErrorListener true
-            Log.w(PtpConstants.TAG, "DirectVideoView playback error: what=$what extra=$extra")
-            layoutVideoBuffering.visibility = View.GONE
-            if (!videoView.isPlaying) {
-                tvVideoError.text = getString(R.string.video_codec_unsupported)
-                tvVideoError.visibility = View.VISIBLE
-                showVideoHud()
-                btnVideoPlayPause.text = "▶ PLAY"
-                updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
+        videoView.setOnBufferingListener { isBuffering ->
+            if (sessionId != currentVideoSessionId) return@setOnBufferingListener
+            if (isBuffering && !videoView.isPlaying) {
+                layoutVideoBuffering.visibility = View.VISIBLE
+            } else {
+                layoutVideoBuffering.visibility = View.GONE
             }
-            true
+        }
+
+        videoView.setOnAudioFallbackNotice { notice ->
+            if (sessionId != currentVideoSessionId) return@setOnAudioFallbackNotice
+            Toast.makeText(this, notice, Toast.LENGTH_LONG).show()
+        }
+
+        videoView.setOnErrorListener { error ->
+            if (sessionId != currentVideoSessionId) return@setOnErrorListener
+            Log.w(PtpConstants.TAG, "DirectVideoView playback error: ${error.message}")
+            layoutVideoBuffering.visibility = View.GONE
+            tvVideoError.text = getString(R.string.video_codec_unsupported)
+            tvVideoError.visibility = View.VISIBLE
+            showVideoHud()
+            btnVideoPlayPause.text = "▶ PLAY"
+            updateMediaSessionState(PlaybackStateCompat.STATE_ERROR, 0L)
         }
 
         videoView.setOnCompletionListener {
@@ -1443,7 +1417,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             session.prewarmInitialChunk()
             if (sessionId == currentVideoSessionId) {
-                videoView.setDataSource(session.dataSource)
+                videoView.setSession(session)
             }
         }
     }
@@ -1481,9 +1455,10 @@ class MainActivity : AppCompatActivity() {
             videoView.setOnPreparedListener(null)
             videoView.setOnErrorListener(null)
             videoView.setOnCompletionListener(null)
+            videoView.setOnBufferingListener(null)
+            videoView.setOnAudioFallbackNotice(null)
             videoView.stopPlayback()
         } catch (_: Exception) {}
-        currentVideoPlayer = null
         layoutVideoBuffering.visibility = View.GONE
         tvVideoError.visibility = View.GONE
         tvVideoError.text = ""

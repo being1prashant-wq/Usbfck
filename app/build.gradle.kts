@@ -82,6 +82,11 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
 
+  implementation(libs.media3.exoplayer)
+  implementation(libs.media3.ui)
+  implementation(libs.media3.datasource)
+  implementation(libs.media3.session)
+
   testImplementation(libs.junit)
   testImplementation(libs.androidx.junit)
   testImplementation(libs.androidx.core)
