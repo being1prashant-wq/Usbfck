@@ -153,7 +153,11 @@ class DirectVideoView @JvmOverloads constructor(
      * Start video playback for a given [PtpPlaybackSession].
      * Starts with ExoPlayer (AC-3/Dolby capabilities enabled) with automatic fallback.
      */
-    fun setPlaybackSession(session: PtpPlaybackSession, preferredEngine: PlaybackEngine = PlaybackEngine.EXOPLAYER) {
+    fun setPlaybackSession(
+        session: PtpPlaybackSession,
+        preferredEngine: PlaybackEngine = PlaybackEngine.EXOPLAYER,
+        initialPositionMs: Long = 0L
+    ) {
         stopPlayback()
         this.currentSession = session
         this.audioFallbackAttempted = false
@@ -161,13 +165,13 @@ class DirectVideoView @JvmOverloads constructor(
         this.activeEngine = preferredEngine
 
         if (preferredEngine == PlaybackEngine.EXOPLAYER) {
-            startExoPlayerSession(session)
+            startExoPlayerSession(session, initialPositionMs)
         } else {
-            startNativeMediaPlayerSession(session)
+            startNativeMediaPlayerSession(session, initialPositionMs)
         }
     }
 
-    private fun startExoPlayerSession(session: PtpPlaybackSession) {
+    private fun startExoPlayerSession(session: PtpPlaybackSession, initialPositionMs: Long = 0L) {
         try {
             activeEngine = PlaybackEngine.EXOPLAYER
             onEngineChangedCallback?.invoke(activeEngine)
@@ -199,7 +203,7 @@ class DirectVideoView @JvmOverloads constructor(
             }
 
             val player = ExoPlayer.Builder(context, renderersFactory)
-                .setSeekParameters(SeekParameters.EXACT)
+                .setSeekParameters(SeekParameters.CLOSEST_SYNC)
                 .build()
 
             this.exoPlayer = player
@@ -247,8 +251,9 @@ class DirectVideoView @JvmOverloads constructor(
                     if (!nativeFallbackAttempted) {
                         nativeFallbackAttempted = true
                         Log.i(PtpConstants.TAG, "ExoPlayer failed on this TV; switching to Native engine fallback")
+                        val resumePos = player.currentPosition.coerceAtLeast(initialPositionMs)
                         mainHandler.post {
-                            fallbackToNativeMediaPlayer(session)
+                            fallbackToNativeMediaPlayer(session, resumePos)
                         }
                         return
                     }
@@ -278,7 +283,6 @@ class DirectVideoView @JvmOverloads constructor(
             val dataSourceFactory = PtpMedia3DataSource.Factory(session)
             val extractorsFactory = DefaultExtractorsFactory()
                 .setConstantBitrateSeekingEnabled(true)
-                .setMp4ExtractorFlags(Mp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS)
 
             val extension = session.item.filename.substringAfterLast('.', "").lowercase()
             val mimeType = when (extension) {
@@ -302,24 +306,27 @@ class DirectVideoView @JvmOverloads constructor(
                 .createMediaSource(mediaItem)
 
             player.setMediaSource(mediaSource)
+            if (initialPositionMs > 0) {
+                player.seekTo(initialPositionMs)
+            }
             player.prepare()
         } catch (e: Exception) {
             Log.e(PtpConstants.TAG, "Failed to initialize ExoPlayer, falling back to Native MediaPlayer", e)
-            fallbackToNativeMediaPlayer(session)
+            fallbackToNativeMediaPlayer(session, initialPositionMs)
         }
     }
 
-    private fun fallbackToNativeMediaPlayer(session: PtpPlaybackSession) {
+    private fun fallbackToNativeMediaPlayer(session: PtpPlaybackSession, initialPositionMs: Long = 0L) {
         try {
             exoPlayer?.stop()
             exoPlayer?.release()
         } catch (_: Exception) {}
         exoPlayer = null
 
-        startNativeMediaPlayerSession(session)
+        startNativeMediaPlayerSession(session, initialPositionMs)
     }
 
-    private fun startNativeMediaPlayerSession(session: PtpPlaybackSession) {
+    private fun startNativeMediaPlayerSession(session: PtpPlaybackSession, initialPositionMs: Long = 0L) {
         activeEngine = PlaybackEngine.NATIVE_MEDIAPLAYER
         onEngineChangedCallback?.invoke(activeEngine)
         isPrepared = false
@@ -346,6 +353,13 @@ class DirectVideoView @JvmOverloads constructor(
                             params.speed = currentPlaybackSpeed
                             player.playbackParams = params
                         } catch (_: Exception) {}
+                    }
+                    if (initialPositionMs > 0) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            player.seekTo(initialPositionMs, MediaPlayer.SEEK_CLOSEST)
+                        } else {
+                            player.seekTo(initialPositionMs.toInt())
+                        }
                     }
                     player.start()
                     requestLayout()
@@ -432,12 +446,21 @@ class DirectVideoView @JvmOverloads constructor(
     }
 
     fun seekTo(msec: Int) {
-        val targetMs = msec.coerceAtLeast(0)
         try {
-            if (activeEngine == PlaybackEngine.EXOPLAYER) {
-                exoPlayer?.seekTo(targetMs.toLong())
-            } else {
-                nativeMediaPlayer?.seekTo(targetMs)
+            val targetMs = msec.toLong().coerceAtLeast(0L)
+            exoPlayer?.let { ep ->
+                val d = ep.duration
+                val clamped = if (d > 0) targetMs.coerceAtMost(d) else targetMs
+                ep.seekTo(clamped)
+            }
+            nativeMediaPlayer?.let { mp ->
+                val d = mp.duration
+                val clamped = if (d > 0) targetMs.toInt().coerceAtMost(d) else targetMs.toInt()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    mp.seekTo(clamped.toLong(), MediaPlayer.SEEK_CLOSEST)
+                } else {
+                    mp.seekTo(clamped)
+                }
             }
         } catch (e: Exception) {
             Log.w(PtpConstants.TAG, "seekTo() failed", e)

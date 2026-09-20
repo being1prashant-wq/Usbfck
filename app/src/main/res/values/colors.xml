@@ -11,6 +11,7 @@
     
     <!-- Modern TV Player palette -->
     <color name="tv_accent">#3B82F6</color>
+    <color name="tv_accent_cyan">#06B6D4</color>
     <color name="tv_accent_glow">#60A5FA</color>
     <color name="tv_control_bg">#D91C2028</color>
     <color name="tv_control_focus_bg">#E62E3848</color>
