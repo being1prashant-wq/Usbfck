@@ -35,6 +35,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.media.AudioCacheManager
 import com.example.media.BackgroundPlayService
 import com.example.media.DirectVideoView
+import com.example.media.PlaybackEngine
 import com.example.media.MediaContextMenuHelper
 import com.example.media.MediaThumbnailLoader
 import com.example.media.PhotoThumbnailLoader
@@ -1362,6 +1363,14 @@ class MainActivity : AppCompatActivity() {
                 updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING, 0L)
                 startVideoProgressLoop(sessionId)
                 resetVideoHudTimer()
+            }
+        }
+
+        videoView.onEngineChangedCallback = { engine ->
+            if (sessionId == currentVideoSessionId) {
+                val ext = item.filename.substringAfterLast('.', "VIDEO").uppercase()
+                val engineDesc = if (engine == PlaybackEngine.EXOPLAYER) "Media3" else "Direct"
+                tvVideoBadgeFormat.text = "$ext • $engineDesc"
             }
         }
 
